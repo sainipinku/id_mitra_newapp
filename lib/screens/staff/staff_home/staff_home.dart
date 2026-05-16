@@ -10,7 +10,8 @@ import 'package:idmitra/providers/student_form/student_form_cubit.dart';
 import 'package:idmitra/providers/student_form/student_form_data_cubit.dart';
 import 'package:idmitra/screens/add_student/add_student_form.dart';
 import 'package:idmitra/providers/add_staff/add_staff_cubit.dart';
-import 'package:idmitra/screens/dashboard/StatCard.dart';
+import 'package:idmitra/screens/partner/dashboard/StatCard.dart';
+
 import 'package:idmitra/screens/staff/staff_order_page/staff_order_page.dart';
 import 'package:idmitra/utils/MyStyles.dart';
 
