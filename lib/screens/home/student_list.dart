@@ -201,6 +201,9 @@ class _StudentsTabState extends State<_StudentsTab> {
     super.initState();
     final cubit = context.read<StudentsCubit>();
 
+    /// 🔥 Sync Offline Students first
+    cubit.syncOfflineStudents(schoolId: widget.schoolId);
+
     /// 🔥 Background sync
     cubit.syncAllStudents(
       schoolId: widget.schoolId,

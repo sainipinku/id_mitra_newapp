@@ -34,6 +34,8 @@ class StudentLocalDS {
           "profile_photo_url": e.profilePhotoUrl,
           "address": e.address,
           "status": e.status ?? 0,
+          "is_offline": e.isOffline ? 1 : 0,
+          "is_extra": e.isExtra ? 1 : 0,
 
           /// Nested JSON
           "missing_fields": jsonEncode(e.missingFields ?? []),
@@ -63,7 +65,7 @@ class StudentLocalDS {
   }) async {
     final db = await DBHelper.db;
 
-    String where = "1=1";
+    String where = "is_extra = 0";
     List<dynamic> args = [];
 
     /// Search
@@ -133,7 +135,7 @@ class StudentLocalDS {
   }) async {
     final db = await DBHelper.db;
 
-    String where = "1=1";
+    String where = "is_extra = 0";
     List<dynamic> args = [];
 
     if (search.isNotEmpty) {
@@ -166,10 +168,46 @@ class StudentLocalDS {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
-  /// ❌ CLEAR TABLE
+  /// 🔍 FETCH OFFLINE STUDENTS
+  Future<List<StudentDetailsData>> getOfflineStudents() async {
+    final db = await DBHelper.db;
+    final data = await db.query(
+      "students",
+      where: "is_offline = 1",
+    );
+    return data.map((e) {
+      final map = Map<String, dynamic>.from(e);
+      map["missing_fields"] = jsonDecode(map["missing_fields"] ?? "[]");
+      map["session"] = jsonDecode(map["session_json"] ?? "{}");
+      map["class"] = jsonDecode(map["class_json"] ?? "{}");
+      map["section"] = jsonDecode(map["section_json"] ?? "{}");
+      map["house"] = jsonDecode(map["house_json"] ?? "{}");
+      return StudentDetailsData.fromJson(map);
+    }).toList();
+  }
+
+  /// 🔍 FETCH EXTRA STUDENTS
+  Future<List<StudentDetailsData>> getExtraStudents() async {
+    final db = await DBHelper.db;
+    final data = await db.query(
+      "students",
+      where: "is_extra = 1",
+    );
+    return data.map((e) {
+      final map = Map<String, dynamic>.from(e);
+      map["missing_fields"] = jsonDecode(map["missing_fields"] ?? "[]");
+      map["session"] = jsonDecode(map["session_json"] ?? "{}");
+      map["class"] = jsonDecode(map["class_json"] ?? "{}");
+      map["section"] = jsonDecode(map["section_json"] ?? "{}");
+      map["house"] = jsonDecode(map["house_json"] ?? "{}");
+      return StudentDetailsData.fromJson(map);
+    }).toList();
+  }
+
+  /// ❌ CLEAR TABLE (Only synced ones)
   Future<void> clearStudents() async {
     final db = await DBHelper.db;
-    await db.delete('students');
+    await db.delete('students', where: 'is_offline = 0 AND is_extra = 0');
   }
 
   /// 🗑️ DELETE SINGLE STUDENT

@@ -11,10 +11,14 @@ import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/components/my_font_weight.dart';
 import 'package:idmitra/helpers/keyboard.dart';
 import 'package:idmitra/models/students/StudentsListModel.dart';
+import 'package:idmitra/providers/add_student/add_student_cubit.dart';
+import 'package:idmitra/providers/student_form/student_form_cubit.dart';
+import 'package:idmitra/providers/student_form/student_form_data_cubit.dart';
 import 'package:idmitra/providers/students/students_cubit.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'package:idmitra/screens/add_student/add_student_form.dart';
 import 'package:idmitra/screens/home/student_profile_page.dart';
 import 'package:idmitra/utils/common_widgets/app_button.dart';
 import '../../providers/students/students_state.dart';
@@ -244,9 +248,9 @@ class _StudentCardState extends State<StudentCard> {
           context,
           MaterialPageRoute(
             builder: (_) => StudentProfilePage(
-                student: studentDetailsData,
-                schoolId: widget.schoolId,
-              ),
+              student: studentDetailsData,
+              schoolId: widget.schoolId,
+            ),
           ),
         ).then((updated) {
           if (updated is StudentDetailsData && mounted) {
@@ -361,6 +365,21 @@ class _StudentCardState extends State<StudentCard> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    // if (studentDetailsData.isOffline) ...[
+                    //   const SizedBox(width: 8),
+                    //   Container(
+                    //     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    //     decoration: BoxDecoration(
+                    //       color: Colors.orange.withOpacity(0.1),
+                    //       borderRadius: BorderRadius.circular(4),
+                    //       border: Border.all(color: Colors.orange, width: 0.5),
+                    //     ),
+                      //   child: Text(
+                      //     "Offline",
+                      //     style: MyStyles.mediumText(size: 10, color: Colors.orange),
+                      //   ),
+                    //   ),
+                   // ],
                   ],
                 ),
                 const SizedBox(height: 3),
@@ -392,7 +411,12 @@ class _StudentCardState extends State<StudentCard> {
               } else if (value == 'delete') {
                 _confirmDelete(context);
               } else if (value == 'extra') {
-                final success = await _moveToExtra();
+                final success = await context
+                    .read<StudentsCubit>()
+                    .moveStudentToExtra(
+                      studentDetailsData.uuid ?? '',
+                      studentDetailsData.schoolId?.toString() ?? widget.schoolId,
+                    );
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -411,7 +435,7 @@ class _StudentCardState extends State<StudentCard> {
                     .read<StudentsCubit>()
                     .toggleStudentStatus(
                       studentDetailsData.uuid ?? '',
-                      studentDetailsData.schoolId?.toString() ?? '',
+                      studentDetailsData.schoolId?.toString() ?? widget.schoolId,
                       studentDetailsData.status ?? 0,
                     );
                 if (success) {
@@ -439,16 +463,6 @@ class _StudentCardState extends State<StudentCard> {
               }
             },
             itemBuilder: (_) => [
-              // const PopupMenuItem(
-              //   value: 'edit',
-              //   child: Row(
-              //     children: [
-              //       Icon(Icons.edit, size: 18, color: Colors.blue),
-              //       SizedBox(width: 8),
-              //       Text('Edit'),
-              //     ],
-              //   ),
-              // ),
               const PopupMenuItem(
                 value: 'extra',
                 child: Row(

@@ -179,6 +179,8 @@ class StudentDetailsData {
   dynamic fatherSignatureUrl;
   String? motherPhotoUrl;
   dynamic motherSignatureUrl;
+  bool isOffline;
+  bool isExtra;
   Session? session;
   Class? datumClass;
   dynamic house;
@@ -254,6 +256,8 @@ class StudentDetailsData {
     this.fatherSignatureUrl,
     this.motherPhotoUrl,
     this.motherSignatureUrl,
+    this.isOffline = false,
+    this.isExtra = false,
     this.session,
     this.datumClass,
     this.house,
@@ -296,8 +300,12 @@ class StudentDetailsData {
     dynamic motherEmail,
     dynamic motherWphone,
     dynamic fatherWphoneNew,
+    bool? isOffline,
+    bool? isExtra,
+    String? uuid,
   }) {
     return StudentDetailsData(
+      uuid: uuid ?? this.uuid,
       profilePhotoUrl: profilePhotoUrl ?? this.profilePhotoUrl,
       name: name ?? this.name,
       fatherName: fatherName ?? this.fatherName,
@@ -332,9 +340,11 @@ class StudentDetailsData {
       fatherEmail: fatherEmail ?? this.fatherEmail,
       motherEmail: motherEmail ?? this.motherEmail,
       motherWphone: motherWphone ?? this.motherWphone,
+      isOffline: isOffline ?? this.isOffline,
+      isExtra: isExtra ?? this.isExtra,
       // unchanged fields:
       id: id,
-      uuid: uuid,
+   //   uuid: uuid,
       schoolId: schoolId,
       photo: photo,
       signature: signature,
@@ -483,6 +493,8 @@ class StudentDetailsData {
         fatherSignatureUrl: json["father_signature_url"],
         motherPhotoUrl: json["mother_photo_url"],
         motherSignatureUrl: json["mother_signature_url"],
+        isOffline: json["is_offline"] == 1 || json["is_offline"] == true,
+        isExtra: json["is_extra"] == 1 || json["is_extra"] == true,
         session: json["session"] == null ? null : Session.fromJson(json["session"]),
         datumClass: json["class"] == null ? null : Class.fromJson(json["class"]),
         house: json["house"],
@@ -559,6 +571,8 @@ class StudentDetailsData {
     "father_signature_url": fatherSignatureUrl,
     "mother_photo_url": motherPhotoUrl,
     "mother_signature_url": motherSignatureUrl,
+    "is_offline": isOffline ? 1 : 0,
+    "is_extra": isExtra ? 1 : 0,
     "session": session?.toJson(),
     "class": datumClass?.toJson(),
     "house": house,

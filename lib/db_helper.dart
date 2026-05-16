@@ -15,7 +15,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 4,
+      version: 6,
       onCreate: (db, version) async {
         await db.execute('''
         CREATE TABLE students (
@@ -42,7 +42,9 @@ class DBHelper {
           section_json TEXT,
           house_json TEXT,
 
-          raw_data TEXT
+          raw_data TEXT,
+          is_offline INTEGER DEFAULT 0,
+          is_extra INTEGER DEFAULT 0
         )
         ''');
 
@@ -67,7 +69,15 @@ class DBHelper {
           await _createSchoolsTable(db);
         }
         if (oldVersion < 5) {
+          try {
+            await db.execute('ALTER TABLE students ADD COLUMN is_offline INTEGER DEFAULT 0');
+          } catch (_) {}
           await _createHomeCacheTable(db);
+        }
+        if (oldVersion < 6) {
+          try {
+            await db.execute('ALTER TABLE students ADD COLUMN is_extra INTEGER DEFAULT 0');
+          } catch (_) {}
         }
       },
     );

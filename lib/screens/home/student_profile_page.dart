@@ -10,6 +10,7 @@ import 'package:idmitra/api_mamanger/api_manager.dart';
 import 'package:idmitra/api_mamanger/config.dart';
 import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/components/my_font_weight.dart';
+import 'package:idmitra/local_db/student_local_ds/student_local_ds.dart';
 import 'package:idmitra/models/students/StudentsListModel.dart';
 import 'package:idmitra/providers/add_student/add_student_cubit.dart';
 import 'package:idmitra/providers/student_form/student_form_cubit.dart';
@@ -34,6 +35,7 @@ class StudentProfilePage extends StatefulWidget {
 
 class _StudentProfilePageState extends State<StudentProfilePage> {
   late StudentDetailsData _student;
+  final StudentLocalDS _localDS = StudentLocalDS();
   File? _profileImageFile;
   bool _isUploading = false;
 
@@ -41,6 +43,20 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
   void initState() {
     super.initState();
     _student = widget.student;
+    _refreshFromLocal();
+  }
+
+  Future<void> _refreshFromLocal() async {
+    // 🔥 Load the latest data from Local DB to ensure we have everything
+    try {
+      final db = await _localDS.getStudents(search: _student.name ?? '');
+      final latest = db.firstWhere((s) => s.uuid == _student.uuid, orElse: () => _student);
+      if (mounted) {
+        setState(() => _student = latest);
+      }
+    } catch (e) {
+      debugPrint("Error refreshing profile from local DB: $e");
+    }
   }
 
   Future<void> _fromCamera() async {
@@ -90,11 +106,16 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
       );
       if (response.statusCode == 200) {
         final jsonData = jsonDecode(response.body);
+        final updatedUrl = jsonData['data']['profile_photo_url'];
         setState(() {
           _student = _student.copyWith(
-            profilePhotoUrl: jsonData['data']['profile_photo_url'],
+            profilePhotoUrl: updatedUrl,
           );
         });
+        
+        // 🔥 Save updated photo to Local DB
+        await _localDS.insertStudents([_student]);
+        debugPrint("Profile photo updated in Local DB");
       }
     } catch (e) {
       debugPrint("Upload error: $e");
@@ -134,11 +155,13 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                 icon: 'assets/icons/remove_image.svg',
                 title: "Remove Photo",
                 color: Colors.red,
-                onTap: () {
+                onTap: () async {
                   setState(() {
                     _profileImageFile = null;
                     _student = _student.copyWith(profilePhotoUrl: "");
                   });
+                  // 🔥 Update Local DB
+                  await _localDS.insertStudents([_student]);
                   Navigator.pop(context);
                 },
               ),
@@ -472,6 +495,15 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                         textColor: isActive ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
                         icon: isActive ? Icons.check_circle_outline : Icons.cancel_outlined,
                       ),
+                      if (_student.isOffline) ...[
+                        const SizedBox(width: 8),
+                        _chipWhite(
+                          label: 'Offline',
+                          bgColor: Colors.orange.withOpacity(0.12),
+                          textColor: Colors.orange.shade800,
+                          icon: Icons.cloud_off_outlined,
+                        ),
+                      ],
                       if (_sessionName().isNotEmpty) ...[
                         const SizedBox(width: 8),
                         _chipWhite(

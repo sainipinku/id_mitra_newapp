@@ -1439,12 +1439,16 @@ class _AddStudentFormPageState extends State<AddStudentFormPage>
                                         schoolId: widget.schoolId,
                                         fields: allFields,
                                         files: _files,
+                                        formDataModel: data,
+                                        allConfiguredFieldNames: currentFields.map((e) => e.name).toList(),
                                       );
                                     } else {
                                       ctx.read<AddStudentCubit>().submit(
                                         schoolId: widget.schoolId,
                                         fields: allFields,
                                         files: _files,
+                                        formDataModel: data,
+                                        allConfiguredFieldNames: currentFields.map((e) => e.name).toList(),
                                       );
                                     }
                                   },

@@ -6,7 +6,9 @@ import 'package:http/http.dart' as http;
 import 'package:idmitra/api_mamanger/config.dart';
 import 'package:idmitra/api_mamanger/secure_storage.dart';
 import 'package:idmitra/local_db/student_local_ds/student_local_ds.dart';
-import 'package:idmitra/models/students/StudentsListModel.dart';
+import 'package:idmitra/models/add_student/StudentFormDataModel.dart';
+import 'package:idmitra/models/students/StudentsListModel.dart' hide ClassOption;
+import 'package:uuid/uuid.dart';
 
 class AddStudentState {
   final bool loading;
@@ -33,6 +35,8 @@ class AddStudentCubit extends Cubit<AddStudentState> {
     required Map<String, dynamic> fields,
     required Map<String, File?> files,
     List<String> formFieldNames = const [],
+    StudentFormDataModel? formDataModel,
+    List<String> allConfiguredFieldNames = const [],
   }) async {
     emit(const AddStudentState(loading: true));
     try {
@@ -94,14 +98,14 @@ class AddStudentCubit extends Cubit<AddStudentState> {
             }
             newStudent = StudentDetailsData.fromJson(data);
 
-            //  Save to Local DB
+            // 🔥 Save to Local DB
             if (newStudent != null) {
               await _localDS.insertStudents([newStudent]);
-              print("Student saved to local DB after successful add");
+              debugPrint("Student saved to local DB after successful add");
             }
           }
         } catch (e) {
-          print("Error saving to local DB or parsing student: $e");
+          debugPrint("Error saving to local DB or parsing student: $e");
         }
         emit(AddStudentState(
           success: true,
@@ -132,8 +136,125 @@ class AddStudentCubit extends Cubit<AddStudentState> {
         emit(AddStudentState(error: errorMsg));
       }
     } catch (e) {
-      emit(AddStudentState(error: e.toString()));
+      if (e is SocketException || e is http.ClientException) {
+        // 🔥 OFFLINE MODE
+        debugPrint("Network error detected, saving student offline: $e");
+        final offlineStudent = _buildOfflineStudent(schoolId, fields, formDataModel, allConfiguredFieldNames);
+        await _localDS.insertStudents([offlineStudent]);
+        emit(AddStudentState(
+          success: true,
+          message: 'Saved offline. Student will be synced later.',
+          newStudent: offlineStudent,
+        ));
+      } else {
+        emit(AddStudentState(error: e.toString()));
+      }
     }
+  }
+
+  StudentDetailsData _buildOfflineStudent(
+    String schoolId,
+    Map<String, dynamic> fields,
+    StudentFormDataModel? formDataModel,
+    List<String> allConfiguredFieldNames,
+  ) {
+    final uuid = const Uuid().v4();
+    final now = DateTime.now();
+
+    final classId = int.tryParse(fields['class']?.toString() ?? '');
+    final sectionId = int.tryParse(fields['class_section']?.toString() ?? '');
+    final sessionId = int.tryParse(fields['session']?.toString() ?? '');
+
+    // Lookup details from formDataModel
+    Class? datumClass;
+    Section? section;
+    Session? session;
+
+    if (formDataModel != null) {
+      if (classId != null) {
+        final c = formDataModel.classes.firstWhere(
+          (element) => element.id == classId,
+          orElse: () => ClassOption(id: -1, name: '', nameWithPrefix: ''),
+        );
+        if (c.id != -1) {
+          datumClass = Class(
+            id: c.id,
+            name: c.name,
+            nameWithprefix: c.nameWithPrefix,
+          );
+
+          if (sectionId != null) {
+            final s = c.sections.firstWhere(
+              (element) => element.id == sectionId,
+              orElse: () => SectionOption(id: -1, name: ''),
+            );
+            if (s.id != -1) {
+              section = Section(id: s.id, name: s.name);
+            }
+          }
+        }
+      }
+
+      if (sessionId != null) {
+        final s = formDataModel.sessions.firstWhere(
+          (element) => element.value == sessionId,
+          orElse: () => SessionOption(value: -1, label: ''),
+        );
+        if (s.value != -1) {
+          session = Session(id: s.value, name: s.label);
+        }
+      }
+    }
+
+    // Determine missing fields (dynamic logic)
+    final missingFields = <String>[];
+    
+    // Define mapping from API field names to logical field names
+    final fieldMapping = {
+      'student_name': 'student_name',
+      'date_of_birth': 'date_of_birth',
+      'gender': 'gender',
+      'class': 'class',
+      'class_section': 'class_section',
+      'father_name': 'father_name',
+      'mother_name': 'mother_name',
+      'student_phone': 'student_phone',
+      'address': 'address',
+      // Add more as needed based on StudentFormDataModel fields
+    };
+
+    for (var apiFieldName in allConfiguredFieldNames) {
+      final logicalName = fieldMapping[apiFieldName] ?? apiFieldName;
+      final value = fields[logicalName];
+      if (value == null || value.toString().trim().isEmpty) {
+        missingFields.add(apiFieldName);
+      }
+    }
+
+    return StudentDetailsData(
+      uuid: uuid,
+      schoolId: int.tryParse(schoolId),
+      name: fields['student_name']?.toString() ?? fields['name']?.toString(),
+      email: fields['student_email']?.toString() ?? fields['email']?.toString(),
+      phone: fields['student_phone']?.toString() ?? fields['phone']?.toString(),
+      gender: fields['gender']?.toString(),
+      dob: fields['date_of_birth']?.toString() ?? fields['dob']?.toString(),
+      fatherName: fields['father_name']?.toString(),
+      fatherPhone: fields['father_phone']?.toString(),
+      motherName: fields['mother_name']?.toString(),
+      address: fields['address']?.toString(),
+      schoolClassId: classId,
+      schoolClassSectionId: sectionId,
+      schoolSessionId: sessionId,
+      status: 1,
+      isOffline: true,
+      createdAt: now,
+      updatedAt: now,
+      missingFields: missingFields,
+      datumClass: datumClass,
+      section: section,
+      session: session,
+    );
   }
 
   Future<void> updateStudent({
@@ -142,6 +263,8 @@ class AddStudentCubit extends Cubit<AddStudentState> {
     required Map<String, dynamic> fields,
     required Map<String, File?> files,
     List<String> formFieldNames = const [],
+    StudentFormDataModel? formDataModel,
+    List<String> allConfiguredFieldNames = const [],
   }) async {
     emit(const AddStudentState(loading: true));
     try {
@@ -224,7 +347,7 @@ class AddStudentCubit extends Cubit<AddStudentState> {
           if (relevantErrors.isNotEmpty) {
             errorMsg = relevantErrors.values
                 .expand((v) => v is List ? v : [v])
-                .take(3)
+                .take(3) 
                 .join('\n');
           } else {
             errorMsg = 'Failed to update student. Please try again.';
@@ -233,7 +356,24 @@ class AddStudentCubit extends Cubit<AddStudentState> {
         emit(AddStudentState(error: errorMsg));
       }
     } catch (e) {
-      emit(AddStudentState(error: e.toString()));
+      if (e is SocketException || e is http.ClientException) {
+        // 🔥 OFFLINE UPDATE MODE
+        debugPrint("Network error detected during update, saving locally: $e");
+        
+        final offlineStudent = _buildOfflineStudent(schoolId, fields, formDataModel, allConfiguredFieldNames);
+        // Ensure we keep the same UUID for the update
+        final studentToSave = offlineStudent.copyWith(uuid: studentUuid);
+        
+        await _localDS.insertStudents([studentToSave]);
+        
+        emit(AddStudentState(
+          success: true,
+          message: 'Updated offline. Changes will be synced later.',
+          newStudent: studentToSave,
+        ));
+      } else {
+        emit(AddStudentState(error: e.toString()));
+      }
     }
   }
 

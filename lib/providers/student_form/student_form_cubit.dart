@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
 import 'package:idmitra/api_mamanger/UserLocal.dart';
@@ -255,6 +256,14 @@ const List<Map<String, dynamic>> _kCoreFields = [
 ];
 
 List<StudentFormField> _ensureCoreFields(List<StudentFormField> fields) {
+  // If fields are empty, return all available fields as a fallback
+  if (fields.isEmpty) {
+    final allFields = <StudentFormField>[];
+    allFields.addAll(_kCoreFields.map((e) => StudentFormField.fromJson(Map<String, dynamic>.from(e))));
+    allFields.addAll(_kAllAvailableFields.map((e) => StudentFormField.fromJson(Map<String, dynamic>.from(e))));
+    return allFields;
+  }
+
   final result = List<StudentFormField>.from(fields);
 
   if (!result.any((f) => f.name == 'class_section')) {
@@ -313,7 +322,7 @@ class StudentFormCubit extends Cubit<StudentFormState> {
 
     // Step 1: Try local DB first (instant load)
     final localFields = await _loadFieldsFromLocal(schoolId);
-    if (localFields != null) {
+    if (localFields != null && localFields.$1.isNotEmpty) {
       emit(state.copyWith(
         loading: false,
         fields: _ensureCoreFields(localFields.$1),
@@ -325,8 +334,29 @@ class StudentFormCubit extends Cubit<StudentFormState> {
       return;
     }
 
-    // Step 2: No local data — fetch from API
+    // Step 2: If no local data and no internet, provide core fields as fallback
+    final hasInternet = await _checkInternet();
+    if (!hasInternet) {
+      emit(state.copyWith(
+        loading: false,
+        fields: _ensureCoreFields([]), // This will provide core fields (Name, Class, etc.)
+        availableFields: _masterAvailableFields,
+        schoolName: schoolName,
+      ));
+      return;
+    }
+
+    // Step 3: Fetch from API
     await _syncFieldsFromApi(schoolId, schoolName, emitStates: true);
+  }
+
+  Future<bool> _checkInternet() async {
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Load form fields from local DB
