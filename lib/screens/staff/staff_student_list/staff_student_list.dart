@@ -21,9 +21,9 @@ import 'package:idmitra/providers/student_form/student_form_cubit.dart';
 import 'package:idmitra/providers/student_form/student_form_data_cubit.dart';
 import 'package:idmitra/providers/students/students_cubit.dart';
 import 'package:idmitra/providers/students/students_state.dart';
-import 'package:idmitra/screens/home/FilterBottomSheet.dart';
-import 'package:idmitra/screens/home/StudentCard.dart';
-import 'package:idmitra/screens/home/StudentIdCardWidget.dart';
+import 'package:idmitra/screens/partner/dashboard/home/FilterBottomSheet.dart';
+import 'package:idmitra/screens/partner/dashboard/home/StudentCard.dart';
+import 'package:idmitra/screens/partner/dashboard/home/StudentIdCardWidget.dart';
 import 'package:idmitra/screens/staff/staff_add_student_form/staff_add_student_form.dart';
 import 'package:idmitra/screens/staff/staff_order_page/staff_order_detail_page.dart';
 

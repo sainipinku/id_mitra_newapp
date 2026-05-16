@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:idmitra/models/schools/SchoolListModel.dart';
 import 'package:idmitra/models/students/StudentsListModel.dart';
-import 'package:idmitra/screens/home/student_profile_page.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:idmitra/api_mamanger/api_manager.dart';
 import 'package:idmitra/api_mamanger/config.dart';
 import 'package:idmitra/providers/students/students_cubit.dart';
+import 'package:idmitra/screens/partner/dashboard/home/student_profile_page.dart';
 
 const double kCardHeight = 420.0;
 

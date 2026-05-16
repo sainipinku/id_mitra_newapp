@@ -9,19 +9,12 @@ import 'package:idmitra/api_mamanger/api_manager.dart';
 import 'package:idmitra/api_mamanger/config.dart';
 import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/components/my_font_weight.dart';
-import 'package:idmitra/helpers/keyboard.dart';
 import 'package:idmitra/models/students/StudentsListModel.dart';
-import 'package:idmitra/providers/add_student/add_student_cubit.dart';
-import 'package:idmitra/providers/student_form/student_form_cubit.dart';
-import 'package:idmitra/providers/student_form/student_form_data_cubit.dart';
 import 'package:idmitra/providers/students/students_cubit.dart';
+import 'package:idmitra/screens/partner/dashboard/home/student_profile_page.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
-
-import 'package:idmitra/screens/add_student/add_student_form.dart';
-import 'package:idmitra/screens/home/student_profile_page.dart';
 import 'package:idmitra/utils/common_widgets/app_button.dart';
-import '../../providers/students/students_state.dart';
 
 class StudentCard extends StatefulWidget {
   StudentDetailsData studentData;

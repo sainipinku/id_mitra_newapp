@@ -15,8 +15,9 @@ import 'package:idmitra/providers/student_form/student_form_cubit.dart';
 import 'package:idmitra/providers/student_form/student_form_data_cubit.dart';
 import 'package:idmitra/Widgets/shimmer_loader.dart';
 import 'package:idmitra/screens/add_student/add_student_form.dart';
-import 'package:idmitra/screens/home/FilterBottomSheet.dart';
-import 'package:idmitra/screens/home/StudentCard.dart';
+import 'package:idmitra/screens/partner/dashboard/home/FilterBottomSheet.dart';
+import 'package:idmitra/screens/partner/dashboard/home/StudentCard.dart';
+
 
 class AdminStudentsScreen extends StatefulWidget {
   final String schoolId;
