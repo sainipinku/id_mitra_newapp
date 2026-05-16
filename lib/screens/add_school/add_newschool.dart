@@ -8,7 +8,7 @@ import 'package:idmitra/helpers/keyboard.dart';
 import 'package:idmitra/models/city_model.dart';
 import 'package:idmitra/models/state_model.dart';
 import 'package:idmitra/screens/add_school/MapScreen.dart';
-import 'package:idmitra/screens/dashboard/dashboard.dart';
+import 'package:idmitra/screens/partner/dashboard/dashboard.dart';
 import 'package:idmitra/utils/common_widgets/LogoUploadView.dart';
 import 'package:idmitra/utils/common_widgets/app_button.dart';
 import 'package:idmitra/utils/common_widgets/drop_down/drop_down.dart';
