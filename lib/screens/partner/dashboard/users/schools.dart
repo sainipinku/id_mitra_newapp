@@ -7,9 +7,8 @@ import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/providers/school/school_cubit.dart';
 import 'package:idmitra/providers/school/school_state.dart';
 import 'package:idmitra/Widgets/shimmer_loader.dart';
-import 'package:idmitra/screens/dashboard/users/users_details_widgets.dart';
-import 'package:idmitra/screens/home/FilterBottomSheet.dart';
-import 'package:idmitra/screens/home/StudentCard.dart';
+import 'package:idmitra/screens/partner/dashboard/users/schools_details_widgets.dart';
+
 import 'package:idmitra/utils/MyStyles.dart';
 
 class Schools extends StatefulWidget {
@@ -161,7 +160,7 @@ class _SchoolsState extends State<Schools>
                         if (index < state.students.length) {
                           final item = state.students[index];
 
-                          return UsersDetailsWidgets(
+                          return SchoolsDetailsWidgets(
                             schoolDetailsModel: item,
                           );
                         } else {

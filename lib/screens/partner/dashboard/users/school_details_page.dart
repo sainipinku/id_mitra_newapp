@@ -7,22 +7,23 @@ import 'package:idmitra/config/ScreenSize.dart';
 import 'package:idmitra/local_db/student_local_ds/student_local_ds.dart';
 import 'package:idmitra/models/schools/SchoolListModel.dart';
 import 'package:idmitra/providers/student_form/student_form_cubit.dart';
+import 'package:idmitra/screens/edit_profile/image_setting.dart';
 import 'package:idmitra/screens/edit_profile/student_form.dart';
-import 'package:idmitra/screens/home/student_list.dart';
-import 'package:idmitra/screens/orders/orders_page.dart';
-import 'package:idmitra/utils/navigation_utils.dart';
-import '../../edit_profile/image_setting.dart';
-import '../../staff/staff_student_list/staff_list.dart';
 
-class UserDetailsPage extends StatefulWidget {
+import 'package:idmitra/screens/partner/dashboard/home/student_list.dart';
+import 'package:idmitra/screens/staff/staff_student_list/staff_list.dart';
+import 'package:idmitra/utils/navigation_utils.dart';
+
+
+class SchoolDetailsPage extends StatefulWidget {
   SchoolDetailsModel? schoolDetailsModel;
-  UserDetailsPage({super.key, this.schoolDetailsModel});
+  SchoolDetailsPage({super.key, this.schoolDetailsModel});
 
   @override
-  State<UserDetailsPage> createState() => _UserDetailsPageState();
+  State<SchoolDetailsPage> createState() => _SchoolDetailsPageState();
 }
 
-class _UserDetailsPageState extends State<UserDetailsPage> {
+class _SchoolDetailsPageState extends State<SchoolDetailsPage> {
   List<String> tabs = [
     "Overview",
     // "Documents",

@@ -2,18 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/components/my_font_weight.dart';
 import 'package:idmitra/models/schools/SchoolListModel.dart';
-import 'package:idmitra/screens/dashboard/users/user_details_page.dart';
+import 'package:idmitra/screens/partner/dashboard/users/school_details_page.dart';
+
 import 'package:idmitra/utils/navigation_utils.dart';
 
-class UsersDetailsWidgets extends StatefulWidget {
+class SchoolsDetailsWidgets extends StatefulWidget {
   SchoolDetailsModel? schoolDetailsModel;
-  UsersDetailsWidgets({super.key,required this.schoolDetailsModel});
+  SchoolsDetailsWidgets({super.key,required this.schoolDetailsModel});
 
   @override
-  State<UsersDetailsWidgets> createState() => _UsersDetailsWidgetsState();
+  State<SchoolsDetailsWidgets> createState() => _SchoolsDetailsWidgetsState();
 }
 
-class _UsersDetailsWidgetsState extends State<UsersDetailsWidgets> {
+class _SchoolsDetailsWidgetsState extends State<SchoolsDetailsWidgets> {
   String _formatDate(DateTime dt) {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -34,7 +35,7 @@ class _UsersDetailsWidgetsState extends State<UsersDetailsWidgets> {
         onTap: (){
           navigateWithTransition(
             context: context,
-            page: UserDetailsPage(schoolDetailsModel: widget.schoolDetailsModel,),
+            page: SchoolDetailsPage(schoolDetailsModel: widget.schoolDetailsModel,),
           );
         },
         child: Row(

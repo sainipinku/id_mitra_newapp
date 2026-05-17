@@ -7,7 +7,8 @@ import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/screens/admin/admin_home/admin_dashboard.dart';
 
 import 'package:idmitra/screens/auth/login.dart';
-import 'package:idmitra/screens/dashboard/dashboard.dart';
+import 'package:idmitra/screens/partner/dashboard/dashboard.dart';
+
 import 'package:idmitra/services/update_service.dart';
 import 'package:idmitra/utils/navigation_utils.dart';
 

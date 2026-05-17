@@ -5,9 +5,9 @@ import 'package:idmitra/Widgets/svg_file.dart';
 import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/components/my_font_weight.dart';
 import 'package:idmitra/providers/home/home_cubit.dart';
-import 'package:idmitra/screens/dashboard/home.dart';
-// import 'package:idmitra/screens/dashboard/reports.dart';
-import 'package:idmitra/screens/dashboard/users/users.dart';
+import 'package:idmitra/screens/partner/dashboard/home.dart';
+import 'package:idmitra/screens/partner/dashboard/users/schools.dart';
+
 
 
 class Dashboard extends StatefulWidget {
