@@ -5,12 +5,16 @@ import 'package:sqflite/sqflite.dart';
 
 class StudentLocalDS {
 
-  /// 🚀 INSERT BATCH
+  ///INSERT BATCH
   Future<void> insertStudents(List<StudentDetailsData> list) async {
     final db = await DBHelper.db;
     final batch = db.batch();
 
     for (var e in list) {
+      if (e.uuid != null && e.uuid!.isNotEmpty) {
+        batch.delete('students', where: 'uuid = ?', whereArgs: [e.uuid]);
+      }
+
       batch.insert(
         'students',
         {
@@ -131,12 +135,19 @@ class StudentLocalDS {
     String search = "",
     String gender = "",
     String classId = "",
+    String schoolId = "",
     List<int> sectionIds = const [],
+    bool includeExtra = true,
   }) async {
     final db = await DBHelper.db;
 
-    String where = "is_extra = 0";
+    String where = includeExtra ? "1=1" : "is_extra = 0";
     List<dynamic> args = [];
+
+    if (schoolId.isNotEmpty) {
+      where += " AND school_id = ?";
+      args.add(int.tryParse(schoolId) ?? 0);
+    }
 
     if (search.isNotEmpty) {
       where += " AND name LIKE ?";
@@ -168,7 +179,7 @@ class StudentLocalDS {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
-  /// 🔍 FETCH OFFLINE STUDENTS
+  /// FETCH OFFLINE STUDENTS
   Future<List<StudentDetailsData>> getOfflineStudents() async {
     final db = await DBHelper.db;
     final data = await db.query(
@@ -186,7 +197,7 @@ class StudentLocalDS {
     }).toList();
   }
 
-  /// 🔍 FETCH EXTRA STUDENTS
+  ///  FETCH EXTRA STUDENTS
   Future<List<StudentDetailsData>> getExtraStudents() async {
     final db = await DBHelper.db;
     final data = await db.query(
@@ -204,16 +215,41 @@ class StudentLocalDS {
     }).toList();
   }
 
-  /// ❌ CLEAR TABLE (Only synced ones)
+  ///  CLEAR TABLE (Only synced ones)
   Future<void> clearStudents() async {
     final db = await DBHelper.db;
     await db.delete('students', where: 'is_offline = 0 AND is_extra = 0');
   }
 
-  /// 🗑️ DELETE SINGLE STUDENT
+  /// DELETE SINGLE STUDENT
   Future<void> deleteStudent(String uuid) async {
     final db = await DBHelper.db;
     await db.delete('students', where: 'uuid = ?', whereArgs: [uuid]);
     print("Deleted Student from local DB: $uuid");
+  }
+
+  ///  FETCH SINGLE STUDENT BY UUID
+  Future<StudentDetailsData?> getStudentByUuid(String uuid) async {
+    final db = await DBHelper.db;
+    final data = await db.query(
+      "students",
+      where: "uuid = ?",
+      whereArgs: [uuid],
+      limit: 1,
+    );
+
+    if (data.isEmpty) return null;
+
+    final e = data.first;
+    final map = Map<String, dynamic>.from(e);
+
+    /// Decode JSON Fields
+    map["missing_fields"] = jsonDecode(map["missing_fields"] ?? "[]");
+    map["session"] = jsonDecode(map["session_json"] ?? "{}");
+    map["class"] = jsonDecode(map["class_json"] ?? "{}");
+    map["section"] = jsonDecode(map["section_json"] ?? "{}");
+    map["house"] = jsonDecode(map["house_json"] ?? "{}");
+
+    return StudentDetailsData.fromJson(map);
   }
 }

@@ -24,6 +24,7 @@ import '../../../providers/add_student/add_student_cubit.dart';
 import '../../../providers/student_form/student_form_data_cubit.dart';
 import '../../../api_mamanger/api_manager.dart';
 import '../../../api_mamanger/config.dart';
+import '../../../local_db/student_local_ds/student_local_ds.dart';
 import '../../add_student/student_assign_class_sheet.dart';
 
 const List<String> _kGenderOptions = [
@@ -104,18 +105,41 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
     if (_extraLoading) return;
     setState(() => _extraLoading = true);
     try {
+      // 1. Fetch from Local DB first
+      final localDS = StudentLocalDS();
+      final localExtra = await localDS.getExtraStudents();
+      setState(() {
+        _extraStudents = localExtra;
+      });
+
+      // 2. Sync from API
       final response = await ApiManager().getRequest(
         "${Config.baseUrl}auth/school/${widget.schoolId}?is_moved=1",
       );
       if (response != null && response.statusCode == 200) {
         final jsonData = jsonDecode(response.body);
         final List list = jsonData["data"]?["data"] ?? [];
-        setState(() {
-          _extraStudents = list.map((e) => StudentDetailsData.fromJson(e)).toList();
-        });
+        final newList = list.map((e) {
+          final s = StudentDetailsData.fromJson(e);
+          return s.copyWith(isExtra: true);
+        }).toList();
+
+        // Save to Local DB
+        await localDS.insertStudents(newList);
       }
+
+      // 3. Final fetch from Local DB
+      final finalExtra = await localDS.getExtraStudents();
+      setState(() {
+        _extraStudents = finalExtra;
+      });
     } catch (e) {
       debugPrint("Fetch extra students error: $e");
+      // Fallback to local data
+      final localExtra = await StudentLocalDS().getExtraStudents();
+      setState(() {
+        _extraStudents = localExtra;
+      });
     }
     setState(() => _extraLoading = false);
   }

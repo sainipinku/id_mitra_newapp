@@ -24,7 +24,7 @@ import 'package:idmitra/providers/students/students_state.dart';
 import 'package:idmitra/screens/admin/admin_add_student_form/admin_add_student_form.dart';
 import 'package:idmitra/screens/admin/admin_order/admin_order_detail_page.dart';
 import 'package:idmitra/screens/home/FilterBottomSheet.dart';
-import 'package:idmitra/screens/home/StudentCard.dart';
+import 'package:idmitra/screens/home/StudentCard.dart' hide AddStudentCubit;
 import 'package:idmitra/screens/home/StudentIdCardWidget.dart';
 
 class AdminStudentsScreen extends StatefulWidget {

@@ -4,6 +4,7 @@ import 'package:idmitra/Widgets/CommonAppBar.dart';
 import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/components/my_font_weight.dart';
 import 'package:idmitra/config/ScreenSize.dart';
+import 'package:idmitra/local_db/student_local_ds/student_local_ds.dart';
 import 'package:idmitra/models/schools/SchoolListModel.dart';
 import 'package:idmitra/providers/staff_form/staff_form_cubit.dart';
 import 'package:idmitra/providers/student_form/student_form_cubit.dart';
@@ -29,6 +30,25 @@ class StaffUserDetailsPage extends StatefulWidget {
 class _StaffUserDetailsPageState extends State<StaffUserDetailsPage> {
   List<String> tabs = ["Overview", "Admin"];
   int selectedIndex = 0;
+  int localStudentCount = 0;
+  final StudentLocalDS _localDS = StudentLocalDS();
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchLocalCount();
+  }
+
+  Future<void> _fetchLocalCount() async {
+    if (widget.schoolDetailsModel != null) {
+      final count = await _localDS.getCount(
+        schoolId: widget.schoolDetailsModel!.id.toString(),
+      );
+      setState(() {
+        localStudentCount = count;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +56,9 @@ class _StaffUserDetailsPageState extends State<StaffUserDetailsPage> {
       schoolDetailsModel: widget.schoolDetailsModel,
       tabs: tabs,
       selectedIndex: selectedIndex,
+      localStudentCount: localStudentCount,
       onTabChanged: (i) => setState(() => selectedIndex = i),
+      onRefresh: _fetchLocalCount,
     );
   }
 }
@@ -45,13 +67,17 @@ class _StaffUserDetailsContent extends StatefulWidget {
   final SchoolDetailsModel? schoolDetailsModel;
   final List<String> tabs;
   final int selectedIndex;
+  final int localStudentCount;
   final void Function(int) onTabChanged;
+  final Future<void> Function() onRefresh;
 
   const _StaffUserDetailsContent({
     this.schoolDetailsModel,
     required this.tabs,
     required this.selectedIndex,
+    required this.localStudentCount,
     required this.onTabChanged,
+    required this.onRefresh,
   });
 
   @override
@@ -59,16 +85,14 @@ class _StaffUserDetailsContent extends StatefulWidget {
 }
 
 class _StaffUserDetailsContentState extends State<_StaffUserDetailsContent> {
-  Future<void> _onRefresh() async {
-    setState(() {});
-  }
-
   @override
   Widget build(BuildContext context) {
     final schoolDetailsModel = widget.schoolDetailsModel;
     final tabs = widget.tabs;
     final selectedIndex = widget.selectedIndex;
     final onTabChanged = widget.onTabChanged;
+    final localStudentCount = widget.localStudentCount;
+    final onRefresh = widget.onRefresh;
 
     return Scaffold(
       appBar: CommonAppBar(
@@ -125,7 +149,7 @@ class _StaffUserDetailsContentState extends State<_StaffUserDetailsContent> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: _onRefresh,
+        onRefresh: onRefresh,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
@@ -256,7 +280,9 @@ class _StaffUserDetailsContentState extends State<_StaffUserDetailsContent> {
                 children: [
                   statCard(
                     title: "STUDENTS",
-                    value: "${schoolDetailsModel?.studentCount ?? ''}",
+                    value: localStudentCount > 0 
+                        ? "$localStudentCount" 
+                        : "${schoolDetailsModel?.studentCount ?? '0'}",
                     callBtn: () => navigateWithTransition(
                       context: context,
                       page: BlocProvider(
@@ -267,11 +293,11 @@ class _StaffUserDetailsContentState extends State<_StaffUserDetailsContent> {
                           schoolDetailsModel: schoolDetailsModel,
                         ),
                       ),
-                    ),
+                    ).then((_) => onRefresh()),
                   ),
                   statCard(
                     title: "STAFF",
-                    value: "${schoolDetailsModel?.staffCount ?? ''}",
+                    value: "${schoolDetailsModel?.staffCount ?? '0'}",
                     callBtn: () => navigateWithTransition(
                       context: context,
                       page: BlocProvider(

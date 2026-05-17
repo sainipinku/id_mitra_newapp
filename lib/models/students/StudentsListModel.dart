@@ -300,9 +300,14 @@ class StudentDetailsData {
     dynamic motherEmail,
     dynamic motherWphone,
     dynamic fatherWphoneNew,
+    int? schoolClassId,
+    int? schoolClassSectionId,
     bool? isOffline,
     bool? isExtra,
     String? uuid,
+    Session? session,
+    Class? datumClass,
+    Section? section,
   }) {
     return StudentDetailsData(
       uuid: uuid ?? this.uuid,
@@ -342,6 +347,11 @@ class StudentDetailsData {
       motherWphone: motherWphone ?? this.motherWphone,
       isOffline: isOffline ?? this.isOffline,
       isExtra: isExtra ?? this.isExtra,
+      schoolClassId: schoolClassId ?? this.schoolClassId,
+      schoolClassSectionId: schoolClassSectionId ?? this.schoolClassSectionId,
+      session: session ?? this.session,
+      datumClass: datumClass ?? this.datumClass,
+      section: section ?? this.section,
       // unchanged fields:
       id: id,
    //   uuid: uuid,
@@ -350,9 +360,7 @@ class StudentDetailsData {
       signature: signature,
       barcodePhoto: barcodePhoto,
       dobTimestamp: dobTimestamp,
-      schoolClassId: schoolClassId,
       schoolSessionId: schoolSessionId,
-      schoolClassSectionId: schoolClassSectionId,
       countryId: countryId,
       stateId: stateId,
       cityId: cityId,
@@ -378,10 +386,7 @@ class StudentDetailsData {
       fatherSignatureUrl: fatherSignatureUrl,
       motherPhotoUrl: motherPhotoUrl,
       motherSignatureUrl: motherSignatureUrl,
-      session: session,
-      datumClass: datumClass,
       house: house,
-      section: section,
     );
   }
 
