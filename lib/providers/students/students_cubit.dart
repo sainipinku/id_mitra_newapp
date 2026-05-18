@@ -1,5 +1,3 @@
-
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -11,6 +9,7 @@ import 'package:idmitra/api_mamanger/UserLocal.dart';
 import 'package:idmitra/api_mamanger/api_manager.dart';
 import 'package:idmitra/api_mamanger/config.dart';
 import 'package:idmitra/api_mamanger/secure_storage.dart';
+import 'package:idmitra/db_helper.dart';
 import 'package:idmitra/local_db/student_local_ds/student_local_ds.dart';
 import 'package:idmitra/models/LoginModel.dart';
 import 'package:idmitra/models/LogoutModel.dart';
@@ -28,6 +27,7 @@ class StudentsCubit extends Cubit<StudentsState> {
 
   ApiManager apiManager = ApiManager();
   final localDS = StudentLocalDS();
+
   void applyFilters({
     String classId = "",
     List<int> sectionIds = const [],
@@ -48,6 +48,14 @@ class StudentsCubit extends Cubit<StudentsState> {
       gender: gender,
     );
   }
+
+  void updateStudentInState(StudentDetailsData updated) {
+    final updatedList = state.studentsList.map((s) {
+      return s.uuid == updated.uuid ? updated : s;
+    }).toList();
+    emit(state.copyWith(studentsList: updatedList));
+  }
+
   Future<void> syncOfflineStudents({required String schoolId}) async {
     final connectivity = await Connectivity().checkConnectivity();
     if (connectivity.contains(ConnectivityResult.none) && connectivity.length == 1) return;
@@ -108,13 +116,36 @@ class StudentsCubit extends Cubit<StudentsState> {
           }
         });
 
-        final method = student.uuid != null && !student.uuid!.contains('-') 
-            ? 'POST' // If it's a real UUID from server, it might need PUT/POST for update
-            : 'POST'; // For new offline students
-        
-        // Note: If we had a separate Update API, we'd check if student.id != null
-        // But for now, we treat all offline-created/updated students as POST to the main endpoint
-        // or a specific update endpoint if available.
+        // 🚀 Handle class assignment for existing students that are marked as is_offline = 1
+        // (This happens when we assign a class to an extra student while offline)
+        final isAssignmentOnly = student.uuid != null &&
+            !student.uuid!.contains('-') &&
+            student.schoolClassId != null;
+
+        if (isAssignmentOnly) {
+          final assignUrl = '${Config.baseUrl}auth/school/$schoolId/students/${student.uuid}/assign';
+          final assignResponse = await http.post(
+            Uri.parse(assignUrl),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'school_class_id': student.schoolClassId,
+              if (student.schoolClassSectionId != null)
+                'school_class_section_id': student.schoolClassSectionId,
+            }),
+          );
+
+          if (assignResponse.statusCode == 200 || assignResponse.statusCode == 201) {
+            // Mark as synced by updating is_offline = 0
+            final syncedStudent = student.copyWith(isOffline: false);
+            await localDS.insertStudents([syncedStudent]);
+            debugPrint("Synced class assignment for: ${student.name}");
+            continue; // Move to next student
+          }
+        }
 
         final streamed = await request.send();
         final response = await http.Response.fromStream(streamed);
@@ -125,7 +156,7 @@ class StudentsCubit extends Cubit<StudentsState> {
           if (data != null && data is Map<String, dynamic>) {
             // Delete offline temporary student
             await localDS.deleteStudent(student.uuid!);
-            
+
             // Insert server student
             final newStudent = StudentDetailsData.fromJson(data);
             await localDS.insertStudents([newStudent]);
@@ -181,9 +212,9 @@ class StudentsCubit extends Cubit<StudentsState> {
     String classId = "",
     List<int> sectionIds = const [],
   }) async {
-    /// 🔥 START LOADING
+    ///  START LOADING
     emit(state.copyWith(isSyncing: true));
-    await localDS.clearStudents(); // 🔥 MUST
+    await localDS.clearStudents(); //  MUST
     int page = 1;
     bool hasMore = true;
 
@@ -223,7 +254,7 @@ class StudentsCubit extends Cubit<StudentsState> {
         print("Sync count: $count");
         print("Sync total: $total");
         print("Sync stopped: $page");
-        /// 🔥 STOP LOADING
+        ///  STOP LOADING
 
 
         if(page == 2){
@@ -267,7 +298,7 @@ class StudentsCubit extends Cubit<StudentsState> {
         "${Config.baseUrl}${Routes.deleteStudent(schoolId, studentUuid)}",
       );
       if (result.statusCode == 200 || result.statusCode == 204 || result.statusCode == 404) {
-        // 🔥 Remove from Local DB (even if 404, we want it gone from UI)
+        //  Remove from Local DB (even if 404, we want it gone from UI)
         await localDS.deleteStudent(studentUuid);
 
         final updated = state.studentsList
@@ -293,19 +324,30 @@ class StudentsCubit extends Cubit<StudentsState> {
       final response = await apiManager.getRequest(
         "${Config.baseUrl}auth/school/$schoolId?is_moved=1",
       );
-      final jsonData = jsonDecode(response.body);
-      List list = jsonData["data"]?["data"] ?? [];
-      final newList = list.map((e) {
-        final s = StudentDetailsData.fromJson(e);
-        return s.copyWith(isExtra: true);
-      }).toList();
-      
-      // Save synced extra students to local DB
-      await localDS.insertStudents(newList);
-      
-      emit(state.copyWith(extraLoading: false, extraStudentsList: newList));
+
+      if (response != null && response.statusCode == 200) {
+        final jsonData = jsonDecode(response.body);
+        List list = jsonData["data"]?["data"] ?? [];
+        final newList = list.map((e) {
+          final s = StudentDetailsData.fromJson(e);
+          return s.copyWith(isExtra: true);
+        }).toList();
+
+        // 🔥 FIX: Skip inserting students with null/empty names to avoid
+        // overwriting valid local data with incomplete API responses
+        final validNewList = newList
+            .where((s) => s.name != null && s.name!.isNotEmpty)
+            .toList();
+        await localDS.insertStudents(validNewList);
+      }
+
+      // 3. Final fetch from Local DB to show merged results (local + synced)
+      final finalExtra = await localDS.getExtraStudents();
+      emit(state.copyWith(extraLoading: false, extraStudentsList: finalExtra));
     } catch (e) {
-      emit(state.copyWith(extraLoading: false));
+      // Still show local data even if API fails
+      final localExtra = await localDS.getExtraStudents();
+      emit(state.copyWith(extraLoading: false, extraStudentsList: localExtra));
       debugPrint("Fetch extra students error: $e");
     }
   }
@@ -321,7 +363,7 @@ class StudentsCubit extends Cubit<StudentsState> {
         // Mark as extra locally
         final updatedStudent = student.copyWith(isExtra: true);
         await localDS.insertStudents([updatedStudent]);
-        
+
         final updated = state.studentsList.where((s) => s.uuid != studentUuid).toList();
         emit(state.copyWith(studentsList: updated));
         return true;
@@ -331,19 +373,19 @@ class StudentsCubit extends Cubit<StudentsState> {
         "${Config.baseUrl}${Routes.moveStudentToExtra(schoolId, studentUuid)}",
       );
       if (response != null && (response.statusCode == 200 || response.statusCode == 201)) {
-        // 🔥 Mark as extra in Local DB
+        //  Mark as extra in Local DB
         final updatedStudent = student.copyWith(isExtra: true);
         await localDS.insertStudents([updatedStudent]);
-        
+
         final updated = state.studentsList.where((s) => s.uuid != studentUuid).toList();
         emit(state.copyWith(studentsList: updated));
         return true;
       } else if (response?.statusCode == 404) {
-        // 🔥 Student not found on server, just mark as extra locally or remove? 
+        //  Student not found on server, just mark as extra locally or remove?
         // User wants it in "Other Student" tab, so mark as extra locally
         final updatedStudent = student.copyWith(isExtra: true);
         await localDS.insertStudents([updatedStudent]);
-        
+
         final updated = state.studentsList.where((s) => s.uuid != studentUuid).toList();
         emit(state.copyWith(studentsList: updated));
         return true;
@@ -352,6 +394,164 @@ class StudentsCubit extends Cubit<StudentsState> {
       debugPrint("Move to extra error: $e");
     }
     return false;
+  }
+
+  Future<bool> assignClass({
+    required String studentUuid,
+    required String schoolId,
+    required int classId,
+    int? sectionId,
+  }) async {
+    try {
+      // 1. Get student from state (check both lists)
+      StudentDetailsData? student;
+      try {
+        student = state.studentsList.firstWhere((s) => s.uuid == studentUuid);
+      } catch (_) {
+        try {
+          student = state.extraStudentsList.firstWhere((s) => s.uuid == studentUuid);
+        } catch (_) {
+          // 🚀 CRITICAL: Fetch from local DB to preserve name/fatherName if not in state
+          student = await localDS.getStudentByUuid(studentUuid);
+        }
+      }
+
+      if (student == null) {
+        debugPrint("Student not found for assignment: $studentUuid");
+        return false;
+      }
+
+      final updatedStudent = student.copyWith(
+        schoolClassId: classId,
+        schoolClassSectionId: sectionId,
+        isExtra: false, // Move from extra to regular list
+        isOffline: true, // Mark for syncing
+      );
+
+      // 2. Fetch class/section details from local cache to populate datumClass/section objects
+      try {
+        final db = await DBHelper.db;
+        final rows = await db.query(
+          'school_form_data',
+          where: 'school_id = ?',
+          whereArgs: [schoolId],
+          limit: 1,
+        );
+        if (rows.isNotEmpty) {
+          final row = rows.first;
+          final classesList = jsonDecode(row['classes_json'] as String? ?? '[]') as List;
+          final classData = classesList.firstWhere((c) => c['id'] == classId, orElse: () => null);
+          if (classData != null) {
+            final datumClass = Class.fromJson(classData);
+            Section? section;
+            if (sectionId != null) {
+              final sectionsList = classData['sections'] as List? ?? [];
+              final sectionData = sectionsList.firstWhere((s) => s['id'] == sectionId, orElse: () => null);
+              if (sectionData != null) {
+                section = Section.fromJson(sectionData);
+              }
+            }
+            // Update the student model with full objects
+            final fullyUpdatedStudent = updatedStudent.copyWith(
+              datumClass: datumClass,
+              section: section,
+            );
+
+            // 2. Always update locally first for offline support
+            await localDS.insertStudents([fullyUpdatedStudent]);
+                 final updatedExtra = state.extraStudentsList
+                .where((s) => s.uuid != studentUuid)
+                .toList();
+            final updatedStudents = [
+              fullyUpdatedStudent,
+              ...state.studentsList.where((s) => s.uuid != studentUuid),
+            ];
+
+            emit(state.copyWith(
+              extraStudentsList: updatedExtra,
+              studentsList: updatedStudents,
+            ));
+          } else {
+            // Fallback if class not found in cache
+            await localDS.insertStudents([updatedStudent]);
+
+            //  FIX: Remove existing entry by uuid before prepending
+            final updatedExtra = state.extraStudentsList
+                .where((s) => s.uuid != studentUuid)
+                .toList();
+            final updatedStudents = [
+              updatedStudent,
+              ...state.studentsList.where((s) => s.uuid != studentUuid),
+            ];
+            emit(state.copyWith(
+                extraStudentsList: updatedExtra,
+                studentsList: updatedStudents));
+          }
+        } else {
+          // Fallback if no form data cached
+          await localDS.insertStudents([updatedStudent]);
+
+          //  FIX: Remove existing entry by uuid before prepending
+          final updatedExtra = state.extraStudentsList
+              .where((s) => s.uuid != studentUuid)
+              .toList();
+          final updatedStudents = [
+            updatedStudent,
+            ...state.studentsList.where((s) => s.uuid != studentUuid),
+          ];
+          emit(state.copyWith(
+              extraStudentsList: updatedExtra,
+              studentsList: updatedStudents));
+        }
+      } catch (e) {
+        debugPrint("Error fetching class details from cache: $e");
+        await localDS.insertStudents([updatedStudent]);
+
+        //  FIX: Remove existing entry by uuid before prepending
+        final updatedExtra = state.extraStudentsList
+            .where((s) => s.uuid != studentUuid)
+            .toList();
+        final updatedStudents = [
+          updatedStudent,
+          ...state.studentsList.where((s) => s.uuid != studentUuid),
+        ];
+        emit(state.copyWith(
+            extraStudentsList: updatedExtra,
+            studentsList: updatedStudents));
+      }
+
+      // 4. Try to sync with server if online
+      final connectivity = await Connectivity().checkConnectivity();
+      if (!connectivity.contains(ConnectivityResult.none)) {
+        final token = await UserSecureStorage.fetchToken();
+        final url = '${Config.baseUrl}auth/school/$schoolId/students/$studentUuid/assign';
+
+        final response = await http.post(
+          Uri.parse(url),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'school_class_id': classId,
+            if (sectionId != null) 'school_class_section_id': sectionId,
+          }),
+        );
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          debugPrint("Student class assigned and synced: $studentUuid");
+          return true;
+        } else {
+          print("Server assign failed: ${response.body}");
+
+        }
+      }
+      return true;
+    } catch (e) {
+      debugPrint("Assign class error: $e");
+      return false;
+    }
   }
 
   Future<bool> toggleStudentStatus(String studentUuid, String schoolId, int currentStatus) async {
@@ -366,7 +566,7 @@ class StudentsCubit extends Cubit<StudentsState> {
         final newStatus = currentStatus == 1 ? 0 : 1;
         final updatedStudent = student.copyWith(status: newStatus);
         await localDS.insertStudents([updatedStudent]);
-        
+
         final updated = state.studentsList.map((s) {
           if (s.uuid == studentUuid) return updatedStudent;
           return s;
@@ -395,7 +595,7 @@ class StudentsCubit extends Cubit<StudentsState> {
         final json = jsonDecode(result.body);
         final newStatus = (json['data']['status'] as int?) ?? (currentStatus == 1 ? 0 : 1);
 
-        // 🔥 Update in Local DB
+        //  Update in Local DB
         try {
           final studentToUpdate = state.studentsList.firstWhere((s) => s.uuid == studentUuid);
           final updatedStudent = studentToUpdate.copyWith(status: newStatus);
@@ -412,7 +612,7 @@ class StudentsCubit extends Cubit<StudentsState> {
         emit(state.copyWith(studentsList: updated));
         return true;
       } else if (result.statusCode == 404) {
-        // 🔥 Student not found on server, remove locally
+        //  Student not found on server, remove locally
         await localDS.deleteStudent(studentUuid);
         final updated = state.studentsList.where((s) => s.uuid != studentUuid).toList();
         emit(state.copyWith(studentsList: updated));

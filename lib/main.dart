@@ -22,9 +22,6 @@ void main() async{
 
   await MaintenanceService.instance.checkOnStartup();
 
-  // NoInternetService will be initialized after MaterialApp is built
-// gdfkgljdfskgjdfkgdflkg
-
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.white,

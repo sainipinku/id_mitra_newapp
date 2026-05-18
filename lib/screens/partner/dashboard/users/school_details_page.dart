@@ -4,6 +4,7 @@ import 'package:idmitra/Widgets/CommonAppBar.dart';
 import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/components/my_font_weight.dart';
 import 'package:idmitra/config/ScreenSize.dart';
+import 'package:idmitra/local_db/student_local_ds/student_local_ds.dart';
 import 'package:idmitra/models/schools/SchoolListModel.dart';
 import 'package:idmitra/providers/student_form/student_form_cubit.dart';
 import 'package:idmitra/screens/edit_profile/image_setting.dart';
@@ -30,6 +31,25 @@ class _SchoolDetailsPageState extends State<SchoolDetailsPage> {
     // "Activity"
   ];
   int selectedIndex = 0;
+  int localStudentCount = 0;
+  final StudentLocalDS _localDS = StudentLocalDS();
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchLocalCount();
+  }
+
+  Future<void> _fetchLocalCount() async {
+    if (widget.schoolDetailsModel != null) {
+      final count = await _localDS.getCount(
+        schoolId: widget.schoolDetailsModel!.id.toString(),
+      );
+      setState(() {
+        localStudentCount = count;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +57,9 @@ class _SchoolDetailsPageState extends State<SchoolDetailsPage> {
       schoolDetailsModel: widget.schoolDetailsModel,
       tabs: tabs,
       selectedIndex: selectedIndex,
+      localStudentCount: localStudentCount,
       onTabChanged: (i) => setState(() => selectedIndex = i),
+      onRefresh: _fetchLocalCount,
     );
   }
 }
@@ -46,13 +68,17 @@ class _UserDetailsContent extends StatelessWidget {
   final SchoolDetailsModel? schoolDetailsModel;
   final List<String> tabs;
   final int selectedIndex;
+  final int localStudentCount;
   final void Function(int) onTabChanged;
+  final Future<void> Function() onRefresh;
 
   const _UserDetailsContent({
     this.schoolDetailsModel,
     required this.tabs,
     required this.selectedIndex,
+    required this.localStudentCount,
     required this.onTabChanged,
+    required this.onRefresh,
   });
 
   @override
@@ -104,9 +130,7 @@ class _UserDetailsContent extends StatelessWidget {
       ),
 
       body: RefreshIndicator(
-        onRefresh: () async {
-          // TODO: Yahan apna refresh logic lagao
-        },
+        onRefresh: onRefresh,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
@@ -237,18 +261,20 @@ class _UserDetailsContent extends StatelessWidget {
                 children: [
                   statCard(
                     title: "STUDENTS",
-                    value: "${schoolDetailsModel?.studentCount ?? ''}",
+                    value: localStudentCount > 0 
+                        ? "$localStudentCount" 
+                        : "${schoolDetailsModel?.studentCount ?? '0'}",
                     callBtn: () => navigateWithTransition(
                       context: context,
                       page: StudentListingPage(
                         schoolId: schoolDetailsModel?.id.toString() ?? '',
                         schoolDetailsModel: schoolDetailsModel,
                       ),
-                    ),
+                    ).then((_) => onRefresh()),
                   ),
                   statCard(
                     title: "STAFF",
-                    value: "${schoolDetailsModel?.staffCount ?? ''}",
+                    value: "${schoolDetailsModel?.staffCount ?? '0'}",
                     callBtn: () => navigateWithTransition(
                       context: context,
                       page: StaffListingPage(schoolId: schoolDetailsModel?.id.toString() ?? ''),

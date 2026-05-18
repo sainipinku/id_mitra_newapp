@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
@@ -44,9 +45,6 @@ class AddStudentCubit extends Cubit<AddStudentState> {
       final url = '${Config.baseUrl}auth/school/$schoolId/students';
 
       final body = _buildBody(schoolId, fields);
-      // debugPrint('=== ADD STUDENT REQUEST BODY ===');
-      // body.forEach((k, v) => debugPrint('  $k: $v'));
-      // debugPrint('================================');
       final request = http.MultipartRequest('POST', Uri.parse(url));
       request.headers['Authorization'] = 'Bearer $token';
       request.headers['Accept'] = 'application/json';
@@ -73,10 +71,6 @@ class AddStudentCubit extends Cubit<AddStudentState> {
 
       final streamed = await request.send();
       final response = await http.Response.fromStream(streamed);
-      //
-      // debugPrint('=== ADD STUDENT RESPONSE (${response.statusCode}) ===');
-      // debugPrint(response.body);
-      // debugPrint('====================================================');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final json = jsonDecode(response.body);
@@ -98,7 +92,7 @@ class AddStudentCubit extends Cubit<AddStudentState> {
             }
             newStudent = StudentDetailsData.fromJson(data);
 
-            // 🔥 Save to Local DB
+            //  Save to Local DB
             if (newStudent != null) {
               await _localDS.insertStudents([newStudent]);
               debugPrint("Student saved to local DB after successful add");
@@ -137,9 +131,15 @@ class AddStudentCubit extends Cubit<AddStudentState> {
       }
     } catch (e) {
       if (e is SocketException || e is http.ClientException) {
-        // 🔥 OFFLINE MODE
+        //  OFFLINE MODE
         debugPrint("Network error detected, saving student offline: $e");
-        final offlineStudent = _buildOfflineStudent(schoolId, fields, formDataModel, allConfiguredFieldNames);
+        final offlineStudent = _buildOfflineStudent(
+          schoolId,
+          fields,
+          formDataModel,
+          allConfiguredFieldNames,
+          existingStudent: null, // New student, no existing data
+        );
         await _localDS.insertStudents([offlineStudent]);
         emit(AddStudentState(
           success: true,
@@ -153,27 +153,32 @@ class AddStudentCubit extends Cubit<AddStudentState> {
   }
 
   StudentDetailsData _buildOfflineStudent(
-    String schoolId,
-    Map<String, dynamic> fields,
-    StudentFormDataModel? formDataModel,
-    List<String> allConfiguredFieldNames,
-  ) {
-    final uuid = const Uuid().v4();
+      String schoolId,
+      Map<String, dynamic> fields,
+      StudentFormDataModel? formDataModel,
+      List<String> allConfiguredFieldNames, {
+        StudentDetailsData? existingStudent, //  NEW: existing student data for update
+      }) {
+    //  UUID: existing student ka UUID use karo, naya mat banao
+    final uuid = existingStudent?.uuid ?? const Uuid().v4();
     final now = DateTime.now();
 
-    final classId = int.tryParse(fields['class']?.toString() ?? '');
-    final sectionId = int.tryParse(fields['class_section']?.toString() ?? '');
-    final sessionId = int.tryParse(fields['session']?.toString() ?? '');
+    final classId = int.tryParse(fields['class']?.toString() ?? '') ??
+        existingStudent?.schoolClassId;
+    final sectionId = int.tryParse(fields['class_section']?.toString() ?? '') ??
+        existingStudent?.schoolClassSectionId;
+    final sessionId = int.tryParse(fields['session']?.toString() ?? '') ??
+        existingStudent?.schoolSessionId;
 
     // Lookup details from formDataModel
-    Class? datumClass;
-    Section? section;
-    Session? session;
+    Class? datumClass = existingStudent?.datumClass;
+    Section? section = existingStudent?.section;
+    Session? session = existingStudent?.session;
 
     if (formDataModel != null) {
       if (classId != null) {
         final c = formDataModel.classes.firstWhere(
-          (element) => element.id == classId,
+              (element) => element.id == classId,
           orElse: () => ClassOption(id: -1, name: '', nameWithPrefix: ''),
         );
         if (c.id != -1) {
@@ -185,7 +190,7 @@ class AddStudentCubit extends Cubit<AddStudentState> {
 
           if (sectionId != null) {
             final s = c.sections.firstWhere(
-              (element) => element.id == sectionId,
+                  (element) => element.id == sectionId,
               orElse: () => SectionOption(id: -1, name: ''),
             );
             if (s.id != -1) {
@@ -197,7 +202,7 @@ class AddStudentCubit extends Cubit<AddStudentState> {
 
       if (sessionId != null) {
         final s = formDataModel.sessions.firstWhere(
-          (element) => element.value == sessionId,
+              (element) => element.value == sessionId,
           orElse: () => SessionOption(value: -1, label: ''),
         );
         if (s.value != -1) {
@@ -208,7 +213,7 @@ class AddStudentCubit extends Cubit<AddStudentState> {
 
     // Determine missing fields (dynamic logic)
     final missingFields = <String>[];
-    
+
     // Define mapping from API field names to logical field names
     final fieldMapping = {
       'student_name': 'student_name',
@@ -220,7 +225,6 @@ class AddStudentCubit extends Cubit<AddStudentState> {
       'mother_name': 'mother_name',
       'student_phone': 'student_phone',
       'address': 'address',
-      // Add more as needed based on StudentFormDataModel fields
     };
 
     for (var apiFieldName in allConfiguredFieldNames) {
@@ -231,24 +235,66 @@ class AddStudentCubit extends Cubit<AddStudentState> {
       }
     }
 
+    //  FIXED: Helper to pick field value — form fields first, then fallback to existingStudent
+    String? _pick(List<String> formKeys, String? existingValue) {
+      for (final k in formKeys) {
+        final v = fields[k]?.toString();
+        if (v != null && v.isNotEmpty) return v;
+      }
+      return existingValue;
+    }
+
     return StudentDetailsData(
+      //  Preserve existing DB id so SQLite UPSERT updates correctly
+      id: existingStudent?.id,
       uuid: uuid,
-      schoolId: int.tryParse(schoolId),
-      name: fields['student_name']?.toString() ?? fields['name']?.toString(),
-      email: fields['student_email']?.toString() ?? fields['email']?.toString(),
-      phone: fields['student_phone']?.toString() ?? fields['phone']?.toString(),
-      gender: fields['gender']?.toString(),
-      dob: fields['date_of_birth']?.toString() ?? fields['dob']?.toString(),
-      fatherName: fields['father_name']?.toString(),
-      fatherPhone: fields['father_phone']?.toString(),
-      motherName: fields['mother_name']?.toString(),
-      address: fields['address']?.toString(),
+      schoolId: int.tryParse(schoolId) ?? existingStudent?.schoolId,
+      name: _pick(['student_name', 'name'], existingStudent?.name),
+      email: _pick(['student_email', 'email'], existingStudent?.email?.toString()),
+      phone: _pick(['student_phone', 'phone'], existingStudent?.phone?.toString()),
+      gender: _pick(['gender'], existingStudent?.gender?.toString()),
+      dob: _pick(['date_of_birth', 'dob'], existingStudent?.dob),
+      fatherName: _pick(['father_name'], existingStudent?.fatherName),
+      fatherPhone: _pick(['father_phone'], existingStudent?.fatherPhone),
+      fatherEmail: _pick(['father_email'], existingStudent?.fatherEmail?.toString()),
+      fatherWphone: _pick(['father_whatsapp_number', 'father_whatsapp'], existingStudent?.fatherWphone?.toString()),
+      motherName: _pick(['mother_name'], existingStudent?.motherName),
+      motherPhone: _pick(['mother_phone'], existingStudent?.motherPhone?.toString()),
+      motherEmail: _pick(['mother_email'], existingStudent?.motherEmail?.toString()),
+      motherWphone: _pick(['mother_whatsapp_number', 'mother_whatsapp'], existingStudent?.motherWphone?.toString()),
+      address: _pick(['address'], existingStudent?.address),
+      pincode: _pick(['pincode'], existingStudent?.pincode?.toString()),
+      whatsappPhone: _pick(['student_whatsapp_number', 'student_whatsapp'], existingStudent?.whatsappPhone?.toString()),
+      landLineNo: _pick(['landline_contact_number', 'landline_number'], existingStudent?.landLineNo?.toString()),
+      aadharNo: _pick(['aadhar_card_number', 'aadhar_no'], existingStudent?.aadharNo?.toString()),
+      uidNo: _pick(['uid_number', 'uid_no'], existingStudent?.uidNo?.toString()),
+      studentNicId: _pick(['student_nic_id', 'nic_id'], existingStudent?.studentNicId?.toString()),
+      caste: _pick(['caste'], existingStudent?.caste?.toString()),
+      religion: _pick(['religion'], existingStudent?.religion?.toString()),
+      isRteStudent: _pick(['is_rte_student'], existingStudent?.isRteStudent?.toString()),
+      regNo: _pick(['registration_number', 'reg_no'], existingStudent?.regNo?.toString()),
+      rollNo: _pick(['roll_number', 'roll_no'], existingStudent?.rollNo?.toString()),
+      admissionNo: _pick(['admission_number', 'admission_no'], existingStudent?.admissionNo?.toString()),
+      srNo: _pick(['sr_number', 'sr_no'], existingStudent?.srNo),
+      rfidNo: _pick(['rfid_number', 'rfid_no'], existingStudent?.rfidNo?.toString()),
+      panNo: _pick(['pen_number', 'pan_number', 'pan_no'], existingStudent?.panNo?.toString()),
+      bloodGroup: _pick(['blood_group'], existingStudent?.bloodGroup?.toString()),
+      transportMode: _pick(['transport_mode'], existingStudent?.transportMode?.toString()),
       schoolClassId: classId,
       schoolClassSectionId: sectionId,
       schoolSessionId: sessionId,
-      status: 1,
+      schoolHouseId: int.tryParse(fields['house']?.toString() ?? '') ??
+          existingStudent?.schoolHouseId,
+      //  Preserve profile photo and other media from existing student
+      profilePhotoUrl: existingStudent?.profilePhotoUrl,
+      signatureUrl: existingStudent?.signatureUrl,
+      fatherPhotoUrl: existingStudent?.fatherPhotoUrl,
+      fatherSignatureUrl: existingStudent?.fatherSignatureUrl,
+      motherPhotoUrl: existingStudent?.motherPhotoUrl,
+      motherSignatureUrl: existingStudent?.motherSignatureUrl,
+      status: existingStudent?.status ?? 1,
       isOffline: true,
-      createdAt: now,
+      createdAt: existingStudent?.createdAt ?? now,
       updatedAt: now,
       missingFields: missingFields,
       datumClass: datumClass,
@@ -265,6 +311,7 @@ class AddStudentCubit extends Cubit<AddStudentState> {
     List<String> formFieldNames = const [],
     StudentFormDataModel? formDataModel,
     List<String> allConfiguredFieldNames = const [],
+    StudentDetailsData? existingStudent, // NEW: pass existing student for offline fallback
   }) async {
     emit(const AddStudentState(loading: true));
     try {
@@ -315,7 +362,7 @@ class AddStudentCubit extends Cubit<AddStudentState> {
             if (data['school_id'] == null) {
               data['school_id'] = int.tryParse(schoolId);
             }
-            
+
             updatedStudent = StudentDetailsData.fromJson(data);
 
             //  Update in Local DB
@@ -347,7 +394,7 @@ class AddStudentCubit extends Cubit<AddStudentState> {
           if (relevantErrors.isNotEmpty) {
             errorMsg = relevantErrors.values
                 .expand((v) => v is List ? v : [v])
-                .take(3) 
+                .take(3)
                 .join('\n');
           } else {
             errorMsg = 'Failed to update student. Please try again.';
@@ -357,15 +404,21 @@ class AddStudentCubit extends Cubit<AddStudentState> {
       }
     } catch (e) {
       if (e is SocketException || e is http.ClientException) {
-        // 🔥 OFFLINE UPDATE MODE
+        //  OFFLINE UPDATE MODE — existingStudent se data preserve karo
         debugPrint("Network error detected during update, saving locally: $e");
-        
-        final offlineStudent = _buildOfflineStudent(schoolId, fields, formDataModel, allConfiguredFieldNames);
+
+        final offlineStudent = _buildOfflineStudent(
+          schoolId,
+          fields,
+          formDataModel,
+          allConfiguredFieldNames,
+          existingStudent: existingStudent, //  Pass existing student
+        );
         // Ensure we keep the same UUID for the update
         final studentToSave = offlineStudent.copyWith(uuid: studentUuid);
-        
+
         await _localDS.insertStudents([studentToSave]);
-        
+
         emit(AddStudentState(
           success: true,
           message: 'Updated offline. Changes will be synced later.',

@@ -495,15 +495,6 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                         textColor: isActive ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
                         icon: isActive ? Icons.check_circle_outline : Icons.cancel_outlined,
                       ),
-                      if (_student.isOffline) ...[
-                        const SizedBox(width: 8),
-                        _chipWhite(
-                          label: 'Offline',
-                          bgColor: Colors.orange.withOpacity(0.12),
-                          textColor: Colors.orange.shade800,
-                          icon: Icons.cloud_off_outlined,
-                        ),
-                      ],
                       if (_sessionName().isNotEmpty) ...[
                         const SizedBox(width: 8),
                         _chipWhite(

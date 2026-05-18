@@ -1,12 +1,16 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
 import 'package:idmitra/Widgets/shimmer_loader.dart';
 import 'package:idmitra/api_mamanger/config.dart';
 import 'package:idmitra/api_mamanger/secure_storage.dart';
 import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/components/my_font_weight.dart';
+import 'package:idmitra/db_helper.dart';
+import 'package:idmitra/providers/students/students_cubit.dart';
 import 'package:idmitra/utils/common_widgets/app_button.dart';
+import 'package:sqflite/sqflite.dart';
 
 class StudentAssignClassSheet extends StatefulWidget {
   final String schoolId;
@@ -74,6 +78,14 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
   }
 
   Future<void> _fetchData() async {
+    // 1. Try loading from Local DB first
+    final localData = await _loadFromLocal();
+    if (localData != null) {
+      _processData(localData);
+      setState(() => _loading = false);
+    }
+
+    // 2. Sync from API
     try {
       final token = await UserSecureStorage.fetchToken();
       final url =
@@ -89,53 +101,102 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
         final json = jsonDecode(response.body);
         final data = json['data'] ?? json;
 
-        final List rawClasses = data['classes'] ?? [];
-        final List<_ClassRow> classes = [];
+        // Save to Local DB
+        await _saveToLocal(data);
 
-        for (final item in rawClasses) {
-          final int classId = item['id'] ?? 0;
-          final String className =
-              item['name_withprefix']?.toString() ??
-              item['name']?.toString() ??
-              '';
-          final List sections = item['sections'] ?? [];
-
-          if (sections.isNotEmpty) {
-            for (final sec in sections) {
-              final sectionId = sec['id'] as int? ?? 0;
-              final sectionName =
-                  sec['name']?.toString().replaceAll('.', '').trim() ?? '';
-              final displayName = '$className (Section $sectionName)';
-              classes.add(_ClassRow(
-                classId: classId,
-                sectionId: sectionId,
-                displayName: displayName,
-              ));
-            }
-          } else {
-            classes.add(_ClassRow(
-              classId: classId,
-              sectionId: null,
-              displayName: className,
-            ));
-          }
-        }
-
-        classes.sort((a, b) {
-          final ai = _sortIndex(a.displayName);
-          final bi = _sortIndex(b.displayName);
-          if (ai != bi) return ai.compareTo(bi);
-          return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
-        });
-
-        setState(() {
-          _availableClasses = classes;
-        });
+        // Process and Update UI
+        _processData(data);
       }
     } catch (e) {
       debugPrint('fetchData error: $e');
     }
     setState(() => _loading = false);
+  }
+
+  void _processData(Map<String, dynamic> data) {
+    final List rawClasses = data['classes'] ?? [];
+    final List<_ClassRow> classes = [];
+
+    for (final item in rawClasses) {
+      final int classId = item['id'] ?? 0;
+      final String className = item['name_withprefix']?.toString() ??
+          item['name']?.toString() ??
+          '';
+      final List sections = item['sections'] ?? [];
+
+      if (sections.isNotEmpty) {
+        for (final sec in sections) {
+          final sectionId = sec['id'] as int? ?? 0;
+          final sectionName =
+              sec['name']?.toString().replaceAll('.', '').trim() ?? '';
+          final displayName = '$className (Section $sectionName)';
+          classes.add(_ClassRow(
+            classId: classId,
+            sectionId: sectionId,
+            displayName: displayName,
+          ));
+        }
+      } else {
+        classes.add(_ClassRow(
+          classId: classId,
+          sectionId: null,
+          displayName: className,
+        ));
+      }
+    }
+
+    classes.sort((a, b) {
+      final ai = _sortIndex(a.displayName);
+      final bi = _sortIndex(b.displayName);
+      if (ai != bi) return ai.compareTo(bi);
+      return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
+    });
+
+    setState(() {
+      _availableClasses = classes;
+    });
+  }
+
+  Future<void> _saveToLocal(Map<String, dynamic> data) async {
+    try {
+      final db = await DBHelper.db;
+      await db.insert(
+        'school_form_data',
+        {
+          'school_id': widget.schoolId,
+          'classes_json': jsonEncode(data['classes'] ?? []),
+          'sessions_json': jsonEncode(data['sessions'] ?? []),
+          'houses_json': jsonEncode(data['houses'] ?? []),
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      debugPrint('saveToLocal error: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>?> _loadFromLocal() async {
+    try {
+      final db = await DBHelper.db;
+      final rows = await db.query(
+        'school_form_data',
+        where: 'school_id = ?',
+        whereArgs: [widget.schoolId],
+        limit: 1,
+      );
+      if (rows.isEmpty) return null;
+
+      final row = rows.first;
+      return {
+        'classes': jsonDecode(row['classes_json'] as String? ?? '[]'),
+        'sessions': jsonDecode(row['sessions_json'] as String? ?? '[]'),
+        'houses': jsonDecode(row['houses_json'] as String? ?? '[]'),
+      };
+    } catch (e) {
+      debugPrint('loadFromLocal error: $e');
+      return null;
+    }
   }
 
   Future<void> _assign() async {
@@ -149,26 +210,16 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
     }
     setState(() => _adding = true);
     try {
-      final token = await UserSecureStorage.fetchToken();
-      final url =
-          '${Config.baseUrl}auth/school/${widget.schoolId}/students/${widget.studentUuid}/assign';
-      final body = <String, dynamic>{
-        'school_class_id': _selectedClass!.classId,
-        if (_selectedClass!.sectionId != null)
-          'school_class_section_id': _selectedClass!.sectionId,
-      };
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(body),
-      );
+      final success = await context.read<StudentsCubit>().assignClass(
+            studentUuid: widget.studentUuid,
+            schoolId: widget.schoolId,
+            classId: _selectedClass!.classId,
+            sectionId: _selectedClass!.sectionId,
+          );
+
       if (!mounted) return;
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
+      if (success) {
         final rootContext = Navigator.of(context, rootNavigator: true).context;
         Navigator.pop(context, true);
         widget.onAssigned?.call();
@@ -180,10 +231,11 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
           ),
         );
       } else {
-        final msg =
-            jsonDecode(response.body)['message'] ?? 'Failed to assign class';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg), backgroundColor: Colors.red),
+          const SnackBar(
+            content: Text('Failed to assign class'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } catch (e) {
