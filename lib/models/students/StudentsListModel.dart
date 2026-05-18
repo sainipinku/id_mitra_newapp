@@ -181,10 +181,13 @@ class StudentDetailsData {
   dynamic motherSignatureUrl;
   bool isOffline;
   bool isExtra;
+  bool isOfflineUpdate; // true = offline update (PUT), false = offline new (POST)
   Session? session;
   Class? datumClass;
   dynamic house;
   Section? section;
+  // Stores original form fields JSON for offline sync
+  String? offlineFieldsJson;
 
   StudentDetailsData({
     this.id,
@@ -258,10 +261,12 @@ class StudentDetailsData {
     this.motherSignatureUrl,
     this.isOffline = false,
     this.isExtra = false,
+    this.isOfflineUpdate = false,
     this.session,
     this.datumClass,
     this.house,
     this.section,
+    this.offlineFieldsJson,
   });
 
   StudentDetailsData copyWith({
@@ -304,10 +309,12 @@ class StudentDetailsData {
     int? schoolClassSectionId,
     bool? isOffline,
     bool? isExtra,
+    bool? isOfflineUpdate,
     String? uuid,
     Session? session,
     Class? datumClass,
     Section? section,
+    String? offlineFieldsJson,
   }) {
     return StudentDetailsData(
       uuid: uuid ?? this.uuid,
@@ -347,6 +354,7 @@ class StudentDetailsData {
       motherWphone: motherWphone ?? this.motherWphone,
       isOffline: isOffline ?? this.isOffline,
       isExtra: isExtra ?? this.isExtra,
+      isOfflineUpdate: isOfflineUpdate ?? this.isOfflineUpdate,
       schoolClassId: schoolClassId ?? this.schoolClassId,
       schoolClassSectionId: schoolClassSectionId ?? this.schoolClassSectionId,
       session: session ?? this.session,
@@ -387,6 +395,7 @@ class StudentDetailsData {
       motherPhotoUrl: motherPhotoUrl,
       motherSignatureUrl: motherSignatureUrl,
       house: house,
+      offlineFieldsJson: offlineFieldsJson ?? this.offlineFieldsJson,
     );
   }
 
@@ -500,6 +509,7 @@ class StudentDetailsData {
         motherSignatureUrl: json["mother_signature_url"],
         isOffline: json["is_offline"] == 1 || json["is_offline"] == true,
         isExtra: json["is_extra"] == 1 || json["is_extra"] == true,
+        isOfflineUpdate: json["is_offline_update"] == 1 || json["is_offline_update"] == true,
         session: json["session"] == null ? null : Session.fromJson(json["session"]),
         datumClass: json["class"] == null ? null : Class.fromJson(json["class"]),
         house: json["house"],
@@ -578,6 +588,7 @@ class StudentDetailsData {
     "mother_signature_url": motherSignatureUrl,
     "is_offline": isOffline ? 1 : 0,
     "is_extra": isExtra ? 1 : 0,
+    "is_offline_update": isOfflineUpdate ? 1 : 0,
     "session": session?.toJson(),
     "class": datumClass?.toJson(),
     "house": house,

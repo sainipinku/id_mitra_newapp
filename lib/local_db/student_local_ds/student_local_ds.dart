@@ -40,6 +40,7 @@ class StudentLocalDS {
           "status": e.status ?? 0,
           "is_offline": e.isOffline ? 1 : 0,
           "is_extra": e.isExtra ? 1 : 0,
+          "is_offline_update": e.isOfflineUpdate ? 1 : 0,
 
           /// Nested JSON
           "missing_fields": jsonEncode(e.missingFields ?? []),
@@ -50,6 +51,7 @@ class StudentLocalDS {
 
           /// Full Raw JSON
           "raw_data": jsonEncode(e.toJson()),
+          "offline_fields_json": e.offlineFieldsJson,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -93,7 +95,8 @@ class StudentLocalDS {
     /// Section Filter
     if (sectionIds.isNotEmpty) {
       where +=
-      " AND school_class_section_id IN (${sectionIds.map((e) => '?').join(',')})";
+      " AND school_class_section_id IN (${sectionIds.map((e) => '?').join(
+          ',')})";
 
       args.addAll(sectionIds);
     }
@@ -166,7 +169,8 @@ class StudentLocalDS {
 
     if (sectionIds.isNotEmpty) {
       where +=
-      " AND school_class_section_id IN (${sectionIds.map((e) => '?').join(',')})";
+      " AND school_class_section_id IN (${sectionIds.map((e) => '?').join(
+          ',')})";
 
       args.addAll(sectionIds);
     }
@@ -179,7 +183,6 @@ class StudentLocalDS {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
-  /// FETCH OFFLINE STUDENTS
   Future<List<StudentDetailsData>> getOfflineStudents() async {
     final db = await DBHelper.db;
     final data = await db.query(
@@ -193,11 +196,12 @@ class StudentLocalDS {
       map["class"] = jsonDecode(map["class_json"] ?? "{}");
       map["section"] = jsonDecode(map["section_json"] ?? "{}");
       map["house"] = jsonDecode(map["house_json"] ?? "{}");
-      return StudentDetailsData.fromJson(map);
+      final student = StudentDetailsData.fromJson(map);
+      student.offlineFieldsJson = map["offline_fields_json"] as String?;
+      return student;
     }).toList();
   }
 
-  ///  FETCH EXTRA STUDENTS
   Future<List<StudentDetailsData>> getExtraStudents() async {
     final db = await DBHelper.db;
     final data = await db.query(
@@ -215,20 +219,17 @@ class StudentLocalDS {
     }).toList();
   }
 
-  ///  CLEAR TABLE (Only synced ones)
   Future<void> clearStudents() async {
     final db = await DBHelper.db;
     await db.delete('students', where: 'is_offline = 0 AND is_extra = 0');
   }
 
-  /// DELETE SINGLE STUDENT
   Future<void> deleteStudent(String uuid) async {
     final db = await DBHelper.db;
     await db.delete('students', where: 'uuid = ?', whereArgs: [uuid]);
     print("Deleted Student from local DB: $uuid");
   }
 
-  ///  FETCH SINGLE STUDENT BY UUID
   Future<StudentDetailsData?> getStudentByUuid(String uuid) async {
     final db = await DBHelper.db;
     final data = await db.query(
@@ -243,7 +244,6 @@ class StudentLocalDS {
     final e = data.first;
     final map = Map<String, dynamic>.from(e);
 
-    /// Decode JSON Fields
     map["missing_fields"] = jsonDecode(map["missing_fields"] ?? "[]");
     map["session"] = jsonDecode(map["session_json"] ?? "{}");
     map["class"] = jsonDecode(map["class_json"] ?? "{}");
@@ -252,4 +252,6 @@ class StudentLocalDS {
 
     return StudentDetailsData.fromJson(map);
   }
+
+
 }

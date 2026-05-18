@@ -85,30 +85,66 @@ class StudentsCubit extends Cubit<StudentsState> {
         request.headers['Authorization'] = 'Bearer $token';
         request.headers['Accept'] = 'application/json';
 
-        // Map student data to request fields
-        final body = {
-          'school_id': schoolId,
-          'student_name': student.name,
-          'name': student.name,
-          'gender': student.gender?.toString().toLowerCase(),
-          'date_of_birth': student.dob,
-          'dob': student.dob,
-          'student_email': student.email,
-          'email': student.email,
-          'student_phone': student.phone,
-          'phone': student.phone,
-          'father_name': student.fatherName,
-          'father_phone': student.fatherPhone,
-          'mother_name': student.motherName,
-          'address': student.address,
-          'school_session_id': student.schoolSessionId?.toString(),
-          'school_class_id': student.schoolClassId?.toString(),
-          'school_class_section_id': student.schoolClassSectionId?.toString(),
-          'password': 'Student@123',
-          'password_confirmation': 'Student@123',
-          'is_moved': student.isExtra ? '1' : '0',
-          'status': student.status?.toString() ?? '1',
-        };
+        // Use original offline fields if available, else fall back to model fields
+        Map<String, dynamic> body;
+        if (student.offlineFieldsJson != null && student.offlineFieldsJson!.isNotEmpty) {
+          // Rebuild exact same body that would have been sent online
+          final originalFields = jsonDecode(student.offlineFieldsJson!) as Map<String, dynamic>;
+          body = _buildSyncBody(schoolId, originalFields);
+        } else {
+          // Fallback: build from model fields (older offline records)
+          body = {
+            'school_id': schoolId,
+            'student_name': student.name,
+            'name': student.name,
+            'gender': student.gender?.toString().toLowerCase(),
+            'date_of_birth': student.dob,
+            'dob': student.dob,
+            'student_email': student.email?.toString(),
+            'email': student.email?.toString(),
+            'student_phone': student.phone?.toString(),
+            'phone': student.phone?.toString(),
+            'whatsapp_phone': student.whatsappPhone?.toString(),
+            'land_line_no': student.landLineNo?.toString(),
+            'aadhar_no': student.aadharNo?.toString(),
+            'aadhar_card_number': student.aadharNo?.toString(),
+            'uid_no': student.uidNo?.toString(),
+            'pan_no': student.panNo?.toString(),
+            'caste': student.caste?.toString(),
+            'religion': student.religion?.toString(),
+            'is_rte_student': student.isRteStudent?.toString(),
+            'address': student.address,
+            'pincode': student.pincode?.toString(),
+            'reg_no': student.regNo?.toString(),
+            'registration_number': student.regNo?.toString(),
+            'roll_no': student.rollNo?.toString(),
+            'roll_number': student.rollNo?.toString(),
+            'admission_no': student.admissionNo?.toString(),
+            'admission_number': student.admissionNo?.toString(),
+            'sr_no': student.srNo,
+            'rfid_no': student.rfidNo?.toString(),
+            'blood_group': student.bloodGroup?.toString(),
+            'transport_mode': student.transportMode?.toString(),
+            'father_name': student.fatherName,
+            'father_email': student.fatherEmail?.toString(),
+            'father_phone': student.fatherPhone,
+            'father_wphone': student.fatherWphone?.toString(),
+            'mother_name': student.motherName,
+            'mother_email': student.motherEmail?.toString(),
+            'mother_phone': student.motherPhone?.toString(),
+            'mother_wphone': student.motherWphone?.toString(),
+            'school_session_id': student.schoolSessionId?.toString(),
+            'session': student.schoolSessionId?.toString(),
+            'school_class_id': student.schoolClassId?.toString(),
+            'class': student.schoolClassId?.toString(),
+            'school_class_section_id': student.schoolClassSectionId?.toString(),
+            'school_house_id': student.schoolHouseId?.toString(),
+            'password': 'Student@123',
+            'password_confirmation': 'Student@123',
+            'is_moved': student.isExtra ? '1' : '0',
+            'status': student.status?.toString() ?? '1',
+          };
+        }
 
         body.forEach((k, v) {
           if (v != null && v.toString().isNotEmpty) {
@@ -147,6 +183,33 @@ class StudentsCubit extends Cubit<StudentsState> {
           }
         }
 
+        if (student.isOfflineUpdate) {
+          final putUrl = '${Config.baseUrl}auth/school/$schoolId/students/${student.uuid}';
+          final putRequest = http.MultipartRequest('PUT', Uri.parse(putUrl));
+          putRequest.headers['Authorization'] = 'Bearer $token';
+          putRequest.headers['Accept'] = 'application/json';
+          body.forEach((k, v) {
+            if (v != null && v.toString().isNotEmpty) {
+              putRequest.fields[k] = v.toString();
+            }
+          });
+          final putStreamed = await putRequest.send();
+          final putResponse = await http.Response.fromStream(putStreamed);
+          if (putResponse.statusCode == 200 || putResponse.statusCode == 201) {
+            final json = jsonDecode(putResponse.body);
+            final data = json['data'];
+            if (data != null && data is Map<String, dynamic>) {
+              await localDS.deleteStudent(student.uuid!);
+              final updatedStudent = StudentDetailsData.fromJson(data);
+              await localDS.insertStudents([updatedStudent]);
+              debugPrint("Synced offline update for: ${student.name}");
+            }
+          } else {
+            debugPrint("Update sync failed (${putResponse.statusCode}): ${putResponse.body}");
+          }
+          continue;
+        }
+
         final streamed = await request.send();
         final response = await http.Response.fromStream(streamed);
 
@@ -170,6 +233,8 @@ class StudentsCubit extends Cubit<StudentsState> {
 
     emit(state.copyWith(isSyncing: false));
     await fetchStudents();
+    final extraList = await localDS.getExtraStudents();
+    emit(state.copyWith(extraStudentsList: extraList));
   }
 
   Future<void> fetchStudents({
@@ -254,8 +319,6 @@ class StudentsCubit extends Cubit<StudentsState> {
         print("Sync count: $count");
         print("Sync total: $total");
         print("Sync stopped: $page");
-        ///  STOP LOADING
-
 
         if(page == 2){
           await fetchStudents();
@@ -333,19 +396,15 @@ class StudentsCubit extends Cubit<StudentsState> {
           return s.copyWith(isExtra: true);
         }).toList();
 
-        // 🔥 FIX: Skip inserting students with null/empty names to avoid
-        // overwriting valid local data with incomplete API responses
         final validNewList = newList
             .where((s) => s.name != null && s.name!.isNotEmpty)
             .toList();
         await localDS.insertStudents(validNewList);
       }
 
-      // 3. Final fetch from Local DB to show merged results (local + synced)
       final finalExtra = await localDS.getExtraStudents();
       emit(state.copyWith(extraLoading: false, extraStudentsList: finalExtra));
     } catch (e) {
-      // Still show local data even if API fails
       final localExtra = await localDS.getExtraStudents();
       emit(state.copyWith(extraLoading: false, extraStudentsList: localExtra));
       debugPrint("Fetch extra students error: $e");
@@ -403,7 +462,6 @@ class StudentsCubit extends Cubit<StudentsState> {
     int? sectionId,
   }) async {
     try {
-      // 1. Get student from state (check both lists)
       StudentDetailsData? student;
       try {
         student = state.studentsList.firstWhere((s) => s.uuid == studentUuid);
@@ -411,7 +469,6 @@ class StudentsCubit extends Cubit<StudentsState> {
         try {
           student = state.extraStudentsList.firstWhere((s) => s.uuid == studentUuid);
         } catch (_) {
-          // 🚀 CRITICAL: Fetch from local DB to preserve name/fatherName if not in state
           student = await localDS.getStudentByUuid(studentUuid);
         }
       }
@@ -424,11 +481,10 @@ class StudentsCubit extends Cubit<StudentsState> {
       final updatedStudent = student.copyWith(
         schoolClassId: classId,
         schoolClassSectionId: sectionId,
-        isExtra: false, // Move from extra to regular list
-        isOffline: true, // Mark for syncing
+        isExtra: false,
+        isOffline: true,
       );
 
-      // 2. Fetch class/section details from local cache to populate datumClass/section objects
       try {
         final db = await DBHelper.db;
         final rows = await db.query(
@@ -451,13 +507,11 @@ class StudentsCubit extends Cubit<StudentsState> {
                 section = Section.fromJson(sectionData);
               }
             }
-            // Update the student model with full objects
             final fullyUpdatedStudent = updatedStudent.copyWith(
               datumClass: datumClass,
               section: section,
             );
 
-            // 2. Always update locally first for offline support
             await localDS.insertStudents([fullyUpdatedStudent]);
                  final updatedExtra = state.extraStudentsList
                 .where((s) => s.uuid != studentUuid)
@@ -472,10 +526,8 @@ class StudentsCubit extends Cubit<StudentsState> {
               studentsList: updatedStudents,
             ));
           } else {
-            // Fallback if class not found in cache
             await localDS.insertStudents([updatedStudent]);
 
-            //  FIX: Remove existing entry by uuid before prepending
             final updatedExtra = state.extraStudentsList
                 .where((s) => s.uuid != studentUuid)
                 .toList();
@@ -507,7 +559,6 @@ class StudentsCubit extends Cubit<StudentsState> {
         debugPrint("Error fetching class details from cache: $e");
         await localDS.insertStudents([updatedStudent]);
 
-        //  FIX: Remove existing entry by uuid before prepending
         final updatedExtra = state.extraStudentsList
             .where((s) => s.uuid != studentUuid)
             .toList();
@@ -520,7 +571,6 @@ class StudentsCubit extends Cubit<StudentsState> {
             studentsList: updatedStudents));
       }
 
-      // 4. Try to sync with server if online
       final connectivity = await Connectivity().checkConnectivity();
       if (!connectivity.contains(ConnectivityResult.none)) {
         final token = await UserSecureStorage.fetchToken();
@@ -553,6 +603,99 @@ class StudentsCubit extends Cubit<StudentsState> {
       return false;
     }
   }
+
+  Map<String, dynamic> _buildSyncBody(String schoolId, Map<String, dynamic> fields) {
+    final gender = fields['gender']?.toString().toLowerCase();
+    final cleanGender = (gender == null || gender == '-select gender-') ? null : gender;
+
+    String? dob;
+    final dobRaw = fields['date_of_birth']?.toString();
+    if (dobRaw != null && dobRaw.isNotEmpty) {
+      final parts = dobRaw.split(RegExp(r'[./\-]'));
+      if (parts.length == 3) {
+        final day = parts[0].padLeft(2, '0');
+        final month = parts[1].padLeft(2, '0');
+        final year = parts[2];
+        dob = '$year-$month-$day';
+      } else {
+        dob = dobRaw;
+      }
+    }
+
+    String? f(List<String> keys) {
+      for (final k in keys) {
+        final v = fields[k]?.toString();
+        if (v != null && v.isNotEmpty) return v;
+      }
+      return null;
+    }
+
+    final password = f(['password']);
+    final passwordConfirmation = f(['password_confirmation']);
+    final finalPassword = (password != null && password.isNotEmpty) ? password : 'Student@123';
+    final finalPasswordConfirmation = (password != null && password.isNotEmpty)
+        ? (passwordConfirmation ?? password)
+        : 'Student@123';
+
+    return {
+      'school_id': schoolId,
+      'student_name': f(['student_name']),
+      'name': f(['student_name']),
+      'dob': dob,
+      'date_of_birth': dob,
+      'gender': cleanGender,
+      'blood_group': f(['blood_group']),
+      'email': f(['student_email']),
+      'student_email': f(['student_email']),
+      'phone': f(['student_phone']),
+      'student_phone': f(['student_phone']),
+      'whatsapp_phone': f(['student_whatsapp_number', 'student_whatsapp', 'whatsapp_number']),
+      'student_whatsapp_number': f(['student_whatsapp_number', 'student_whatsapp']),
+      'land_line_no': f(['landline_contact_number', 'landline_number', 'land_line_no']),
+      'landline_contact_number': f(['landline_contact_number', 'landline_number']),
+      'aadhar_no': f(['aadhar_card_number', 'aadhar_no']),
+      'aadhar_card_number': f(['aadhar_card_number', 'aadhar_no']),
+      'uid_no': f(['uid_number', 'uid_no']),
+      'uid_number': f(['uid_number', 'uid_no']),
+      'student_nic_id': f(['student_nic_id', 'nic_id']),
+      'pan_no': f(['pen_number', 'pan_number', 'pan_no']),
+      'pen_number': f(['pen_number', 'pan_number', 'pan_no']),
+      'caste': f(['caste']),
+      'religion': f(['religion']),
+      'is_rte_student': f(['is_rte_student']),
+      'address': f(['address']),
+      'pincode': f(['pincode']),
+      'school_session_id': fields['session']?.toString(),
+      'session': fields['session']?.toString(),
+      'school_class_id': fields['class']?.toString(),
+      'class': fields['class']?.toString(),
+      'school_class_section_id': fields['class_section']?.toString(),
+      'school_house_id': fields['house']?.toString(),
+      'house': fields['house']?.toString(),
+      'reg_no': f(['registration_number', 'reg_no']),
+      'registration_number': f(['registration_number', 'reg_no']),
+      'roll_no': f(['roll_number', 'roll_no']),
+      'roll_number': f(['roll_number', 'roll_no']),
+      'admission_no': f(['admission_number', 'admission_no']),
+      'admission_number': f(['admission_number', 'admission_no']),
+      'sr_no': f(['sr_number', 'sr_no']),
+      'sr_number': f(['sr_number', 'sr_no']),
+      'rfid_no': f(['rfid_number', 'rfid_no']),
+      'rfid_number': f(['rfid_number', 'rfid_no']),
+      'transport_mode': f(['transport_mode']),
+      'father_name': f(['father_name']),
+      'father_email': f(['father_email']),
+      'father_phone': f(['father_phone']),
+      'father_wphone': f(['father_whatsapp_number', 'father_whatsapp']),
+      'mother_name': f(['mother_name']),
+      'mother_email': f(['mother_email']),
+      'mother_phone': f(['mother_phone']),
+      'mother_wphone': f(['mother_whatsapp_number', 'mother_whatsapp']),
+      'password': finalPassword,
+      'password_confirmation': finalPasswordConfirmation,
+    };
+  }
+
 
   Future<bool> toggleStudentStatus(String studentUuid, String schoolId, int currentStatus) async {
     try {
@@ -622,5 +765,4 @@ class StudentsCubit extends Cubit<StudentsState> {
       debugPrint("Toggle status error: $e");
     }
     return false;
-  }
-}
+  }}

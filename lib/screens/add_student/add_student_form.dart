@@ -989,11 +989,13 @@ class _AddStudentFormPageState extends State<AddStudentFormPage>
       );
 
   Widget _otherStudentTab() {
-    return BlocProvider(
-      create: (_) => StudentsCubit()
-        ..fetchExtraStudents(schoolId: widget.schoolId),
-      child: _extraStudentList(),
-    );
+    // Use the parent StudentsCubit so moveStudentToExtra state updates are reflected here
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<StudentsCubit>().fetchExtraStudents(schoolId: widget.schoolId);
+      }
+    });
+    return _extraStudentList();
   }
 
   Widget _extraStudentList() {

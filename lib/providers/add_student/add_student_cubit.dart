@@ -78,12 +78,10 @@ class AddStudentCubit extends Cubit<AddStudentState> {
         StudentDetailsData? newStudent;
         try {
           if (data is Map<String, dynamic>) {
-            // Patch school_id from request if API response omits it
             if (data['school_id'] == null) {
               data['school_id'] = int.tryParse(schoolId);
             }
 
-            // Patch school_class_section_id from request if API response omits it
             final sectionId = fields['class_section'];
             if (sectionId != null && data['school_class_section_id'] == null) {
               data['school_class_section_id'] = sectionId is int
@@ -138,13 +136,15 @@ class AddStudentCubit extends Cubit<AddStudentState> {
           fields,
           formDataModel,
           allConfiguredFieldNames,
-          existingStudent: null, // New student, no existing data
+          existingStudent: null,
         );
-        await _localDS.insertStudents([offlineStudent]);
+        final studentWithFields = offlineStudent
+          ..offlineFieldsJson = jsonEncode(fields);
+        await _localDS.insertStudents([studentWithFields]);
         emit(AddStudentState(
           success: true,
           message: 'Saved offline. Student will be synced later.',
-          newStudent: offlineStudent,
+          newStudent: studentWithFields,
         ));
       } else {
         emit(AddStudentState(error: e.toString()));
@@ -157,9 +157,8 @@ class AddStudentCubit extends Cubit<AddStudentState> {
       Map<String, dynamic> fields,
       StudentFormDataModel? formDataModel,
       List<String> allConfiguredFieldNames, {
-        StudentDetailsData? existingStudent, //  NEW: existing student data for update
+        StudentDetailsData? existingStudent,
       }) {
-    //  UUID: existing student ka UUID use karo, naya mat banao
     final uuid = existingStudent?.uuid ?? const Uuid().v4();
     final now = DateTime.now();
 
@@ -170,7 +169,6 @@ class AddStudentCubit extends Cubit<AddStudentState> {
     final sessionId = int.tryParse(fields['session']?.toString() ?? '') ??
         existingStudent?.schoolSessionId;
 
-    // Lookup details from formDataModel
     Class? datumClass = existingStudent?.datumClass;
     Section? section = existingStudent?.section;
     Session? session = existingStudent?.session;
@@ -211,10 +209,8 @@ class AddStudentCubit extends Cubit<AddStudentState> {
       }
     }
 
-    // Determine missing fields (dynamic logic)
     final missingFields = <String>[];
 
-    // Define mapping from API field names to logical field names
     final fieldMapping = {
       'student_name': 'student_name',
       'date_of_birth': 'date_of_birth',
@@ -235,7 +231,6 @@ class AddStudentCubit extends Cubit<AddStudentState> {
       }
     }
 
-    //  FIXED: Helper to pick field value — form fields first, then fallback to existingStudent
     String? _pick(List<String> formKeys, String? existingValue) {
       for (final k in formKeys) {
         final v = fields[k]?.toString();
@@ -245,7 +240,6 @@ class AddStudentCubit extends Cubit<AddStudentState> {
     }
 
     return StudentDetailsData(
-      //  Preserve existing DB id so SQLite UPSERT updates correctly
       id: existingStudent?.id,
       uuid: uuid,
       schoolId: int.tryParse(schoolId) ?? existingStudent?.schoolId,
@@ -319,10 +313,9 @@ class AddStudentCubit extends Cubit<AddStudentState> {
       final url = '${Config.baseUrl}${Routes.updateStudent(schoolId, studentUuid)}';
 
       final body = _buildBody(schoolId, fields);
-      final request = http.MultipartRequest('POST', Uri.parse(url));
+      final request = http.MultipartRequest('PUT', Uri.parse(url));
       request.headers['Authorization'] = 'Bearer $token';
       request.headers['Accept'] = 'application/json';
-      request.fields['_method'] = 'PUT';
 
       body.forEach((k, v) {
         if (v != null && v.toString().isNotEmpty) {
@@ -414,8 +407,11 @@ class AddStudentCubit extends Cubit<AddStudentState> {
           allConfiguredFieldNames,
           existingStudent: existingStudent, //  Pass existing student
         );
-        // Ensure we keep the same UUID for the update
-        final studentToSave = offlineStudent.copyWith(uuid: studentUuid);
+        final studentToSave = offlineStudent.copyWith(
+          uuid: studentUuid,
+          isOfflineUpdate: true,
+          offlineFieldsJson: jsonEncode(fields),
+        );
 
         await _localDS.insertStudents([studentToSave]);
 

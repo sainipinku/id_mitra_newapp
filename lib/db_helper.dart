@@ -15,7 +15,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 6,
+      version: 8,
       onCreate: (db, version) async {
         await db.execute('''
         CREATE TABLE students (
@@ -44,7 +44,9 @@ class DBHelper {
 
           raw_data TEXT,
           is_offline INTEGER DEFAULT 0,
-          is_extra INTEGER DEFAULT 0
+          is_extra INTEGER DEFAULT 0,
+          offline_fields_json TEXT,
+          is_offline_update INTEGER DEFAULT 0
         )
         ''');
 
@@ -79,8 +81,34 @@ class DBHelper {
             await db.execute('ALTER TABLE students ADD COLUMN is_extra INTEGER DEFAULT 0');
           } catch (_) {}
         }
+        if (oldVersion < 7) {
+          try {
+            await db.execute('ALTER TABLE students ADD COLUMN offline_fields_json TEXT');
+          } catch (_) {}
+        }
+        if (oldVersion < 8) {
+          try {
+            await db.execute('ALTER TABLE students ADD COLUMN is_offline_update INTEGER DEFAULT 0');
+          } catch (_) {}
+        }
+        if (oldVersion < 9) {
+          await _createPendingActionsTable(db);
+        }
       },
     );
+  }
+
+  static Future<void> _createPendingActionsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS pending_actions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action_type TEXT NOT NULL,
+        student_uuid TEXT NOT NULL,
+        school_id TEXT NOT NULL,
+        payload_json TEXT,
+        created_at INTEGER
+      )
+    ''');
   }
 
   static Future<void> _createFormDataTable(Database db) async {
