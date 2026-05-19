@@ -138,8 +138,15 @@ class AddStudentCubit extends Cubit<AddStudentState> {
           allConfiguredFieldNames,
           existingStudent: null,
         );
-        final studentWithFields = offlineStudent
-          ..offlineFieldsJson = jsonEncode(fields);
+
+        // Handle offline photo if present
+        final photoFile = files['student_photo'];
+        final studentWithFields = offlineStudent.copyWith(
+          offlineFieldsJson: jsonEncode(fields),
+          isPhotoPendingSync: photoFile != null,
+          offlinePhotoPath: photoFile?.path,
+        );
+
         await _localDS.insertStudents([studentWithFields]);
         emit(AddStudentState(
           success: true,
@@ -159,7 +166,7 @@ class AddStudentCubit extends Cubit<AddStudentState> {
       List<String> allConfiguredFieldNames, {
         StudentDetailsData? existingStudent,
       }) {
-    final uuid = existingStudent?.uuid ?? const Uuid().v4();
+    final uuid = existingStudent?.uuid ?? 'offline_${const Uuid().v4()}';
     final now = DateTime.now();
 
     final classId = int.tryParse(fields['class']?.toString() ?? '') ??
@@ -279,7 +286,6 @@ class AddStudentCubit extends Cubit<AddStudentState> {
       schoolSessionId: sessionId,
       schoolHouseId: int.tryParse(fields['house']?.toString() ?? '') ??
           existingStudent?.schoolHouseId,
-      //  Preserve profile photo and other media from existing student
       profilePhotoUrl: existingStudent?.profilePhotoUrl,
       signatureUrl: existingStudent?.signatureUrl,
       fatherPhotoUrl: existingStudent?.fatherPhotoUrl,
@@ -407,10 +413,15 @@ class AddStudentCubit extends Cubit<AddStudentState> {
           allConfiguredFieldNames,
           existingStudent: existingStudent, //  Pass existing student
         );
+
+        // Handle offline photo if present
+        final photoFile = files['student_photo'];
         final studentToSave = offlineStudent.copyWith(
           uuid: studentUuid,
           isOfflineUpdate: true,
           offlineFieldsJson: jsonEncode(fields),
+          isPhotoPendingSync: photoFile != null,
+          offlinePhotoPath: photoFile?.path,
         );
 
         await _localDS.insertStudents([studentToSave]);

@@ -38,7 +38,6 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
 
   _ClassRow? _selectedClass;
 
-  // same sort order as FilterBottomSheet
   static const _classOrder = [
     'pre nursery', 'prenursery', 'pre-nursery',
     'nursery', 'nur',
@@ -78,14 +77,12 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
   }
 
   Future<void> _fetchData() async {
-    // 1. Try loading from Local DB first
     final localData = await _loadFromLocal();
     if (localData != null) {
       _processData(localData);
       setState(() => _loading = false);
     }
 
-    // 2. Sync from API
     try {
       final token = await UserSecureStorage.fetchToken();
       final url =
@@ -104,11 +101,10 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
         // Save to Local DB
         await _saveToLocal(data);
 
-        // Process and Update UI
         _processData(data);
       }
     } catch (e) {
-      debugPrint('fetchData error: $e');
+      print('fetchData error: $e');
     }
     setState(() => _loading = false);
   }
@@ -172,7 +168,7 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     } catch (e) {
-      debugPrint('saveToLocal error: $e');
+      print('saveToLocal error: $e');
     }
   }
 
@@ -194,7 +190,7 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
         'houses': jsonDecode(row['houses_json'] as String? ?? '[]'),
       };
     } catch (e) {
-      debugPrint('loadFromLocal error: $e');
+      print('loadFromLocal error: $e');
       return null;
     }
   }
@@ -239,7 +235,7 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
         );
       }
     } catch (e) {
-      debugPrint('assign error: $e');
+      print('assign error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -268,7 +264,6 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Header ──────────────────────────────────────────────────
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -293,7 +288,6 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
           ),
           const Divider(height: 24),
 
-          // ── Class list (same style as FilterBottomSheet) ─────────────
           Text('Select Class',
               style: MyStyles.mediumText(
                   size: 13, color: AppTheme.graySubTitleColor)),

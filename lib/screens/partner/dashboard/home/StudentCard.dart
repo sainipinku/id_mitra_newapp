@@ -109,29 +109,21 @@ class _StudentCardState extends State<StudentCard> {
     setState(() => isUploading = true);
 
     try {
-      File fixedImage = await FlutterExifRotation.rotateImage(path: path);
+      await context.read<StudentsCubit>().uploadStudentImage(
+            path: path,
+            student: studentDetailsData,
+          );
 
-      var response = await ApiManager().multiRequestRoute(
-        fixedImage.path,
-        Config.baseUrl + Routes.updateStudentProfile(studentDetailsData.uuid ?? ''),
+      final cubit = context.read<StudentsCubit>();
+      final updatedStudent = cubit.state.studentsList.firstWhere(
+        (s) => s.uuid == studentDetailsData.uuid,
+        orElse: () => studentDetailsData,
       );
 
-      if (response.statusCode == 200) {
-        final jsonData = jsonDecode(response.body);
+      setState(() {
+        studentDetailsData = updatedStudent;
+      });
 
-        final updated = studentDetailsData.copyWith(
-          profilePhotoUrl: jsonData['data']['profile_photo_url'],
-        );
-
-        setState(() {
-          studentDetailsData = updated;
-        });
-
-        //  Also update in StudentsCubit state so list reflects new photo
-        if (mounted) {
-          context.read<StudentsCubit>().updateStudentInState(updated);
-        }
-      }
     } catch (e) {
       debugPrint("Upload error: $e");
     }
@@ -221,7 +213,6 @@ class _StudentCardState extends State<StudentCard> {
   @override
   void didUpdateWidget(covariant StudentCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // FIXED: UUID ya data change hone par update karo
     if (oldWidget.studentData.uuid != widget.studentData.uuid ||
         oldWidget.studentData.name != widget.studentData.name ||
         oldWidget.studentData.schoolClassSectionId != widget.studentData.schoolClassSectionId) {
@@ -275,7 +266,6 @@ class _StudentCardState extends State<StudentCard> {
           ),
         ).then((updated) {
           if (updated is StudentDetailsData && mounted) {
-            //  Profile page se wapas aane par bhi list update karo
             setState(() => studentDetailsData = updated);
             context.read<StudentsCubit>().updateStudentInState(updated);
           }
@@ -312,8 +302,17 @@ class _StudentCardState extends State<StudentCard> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                     )
-                        : (studentDetailsData.profilePhotoUrl != null &&
-                        studentDetailsData.profilePhotoUrl!.isNotEmpty)
+                        : (studentDetailsData.isPhotoPendingSync &&
+                                studentDetailsData.offlinePhotoPath != null)
+                            ? Image.file(
+                                File(studentDetailsData.offlinePhotoPath!),
+                                height: 60,
+                                width: 60,
+                                fit: BoxFit.cover,
+                              )
+                            : (studentDetailsData.profilePhotoUrl != null &&
+                                    studentDetailsData.profilePhotoUrl!
+                                        .isNotEmpty)
                         ? Image.network(
                       studentDetailsData.profilePhotoUrl!,
                       height: 60,

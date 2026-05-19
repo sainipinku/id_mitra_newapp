@@ -20,7 +20,6 @@ class HomeCubit extends Cubit<HomeState> {
   ApiManager apiManager = ApiManager();
   final localDS = StudentLocalDS();
 
-  // ─── LOCAL DB ───
 
   Future<void> _saveToLocal(String key, Map<String, dynamic> json) async {
     try {
@@ -51,7 +50,6 @@ class HomeCubit extends Cubit<HomeState> {
       );
       if (rows.isEmpty) return null;
       final data = jsonDecode(rows.first['json_data'] as String) as Map<String, dynamic>;
-     // print('HomeCubit loaded from local DB: $key');
       return data;
     } catch (e) {
       print('HomeCubit local load error: $e');
@@ -59,16 +57,13 @@ class HomeCubit extends Cubit<HomeState> {
     }
   }
 
-  // ─── LOCAL SCHOOL COUNT ───
 
   Future<PartnerDashboardModel> _injectLocalSchoolCount(PartnerDashboardModel model) async {
     try {
-      // Schools are cached in home_cache with key 'schools_list_page_1_search_'
       final localSchoolData = await _loadFromLocal('schools_list_page_1_search_');
       if (localSchoolData != null && model.data != null) {
         final List schoolsList = localSchoolData['data']?['schools']?['data'] ?? [];
         final int apiTotal = localSchoolData['data']?['schools']?['total'] ?? 0;
-        // Use API total if available (covers all pages), else use loaded list length
         final int localCount = apiTotal > 0 ? apiTotal : schoolsList.length;
         if (localCount > 0) {
           final updatedSchools = Employees(
@@ -104,7 +99,6 @@ class HomeCubit extends Cubit<HomeState> {
     return model;
   }
 
-  // ─── LOCAL STUDENT COUNT ───
 
   Future<PartnerDashboardModel> _injectLocalStudentCount(PartnerDashboardModel model) async {
     try {
@@ -142,12 +136,10 @@ class HomeCubit extends Cubit<HomeState> {
     return model;
   }
 
-  // ─── LOAD HOME DATA ───────
 
   Future<void> loadHomeData() async {
     emit(state.copyWith(loading: true));
 
-    // Step 1: Load from local DB first (instant)
     final localDashboard = await _loadFromLocal(_kDashboardKey);
     final localUser = await _loadFromLocal(_kUserKey);
 
@@ -169,16 +161,13 @@ class HomeCubit extends Cubit<HomeState> {
         user: userModel,
       ));
 
-      // Step 2: Background sync from API
       _syncFromApi();
       return;
     }
 
-    // Step 3: No local data — fetch from API with loading
     await _syncFromApi(emitStates: true);
   }
 
-  // ─── SYNC FROM API ───────────────────────────────────────────────────────────
 
   Future<void> _syncFromApi({bool emitStates = false}) async {
     try {
@@ -220,11 +209,9 @@ class HomeCubit extends Cubit<HomeState> {
         final dashboardModel = PartnerDashboardModel.fromJson(dashboardJson);
         final userModel = UserDetailsModel.fromJson(userJson);
 
-        // Save to local DB
         await _saveToLocal(_kDashboardKey, dashboardJson);
         await _saveToLocal(_kUserKey, userJson);
 
-        // Inject local student count
         final updatedDashboard = await _injectLocalStudentCount(dashboardModel);
 
         print('HomeCubit synced — schools: ${updatedDashboard.data?.schools?.total}, students: ${updatedDashboard.data?.students?.total}, user: ${userModel.user?.name}');

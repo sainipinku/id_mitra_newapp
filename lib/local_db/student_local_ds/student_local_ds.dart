@@ -41,6 +41,11 @@ class StudentLocalDS {
           "is_offline": e.isOffline ? 1 : 0,
           "is_extra": e.isExtra ? 1 : 0,
           "is_offline_update": e.isOfflineUpdate ? 1 : 0,
+          "is_extra_pending_sync": e.isExtraPendingSync ? 1 : 0,
+          "is_delete_pending_sync": e.isDeletePendingSync ? 1 : 0,
+          "is_status_pending_sync": e.isStatusPendingSync ? 1 : 0,
+          "is_photo_pending_sync": e.isPhotoPendingSync ? 1 : 0,
+          "offline_photo_path": e.offlinePhotoPath,
 
           /// Nested JSON
           "missing_fields": jsonEncode(e.missingFields ?? []),
@@ -187,7 +192,8 @@ class StudentLocalDS {
     final db = await DBHelper.db;
     final data = await db.query(
       "students",
-      where: "is_offline = 1",
+      where:
+          "is_offline = 1 OR is_offline_update = 1 OR is_extra_pending_sync = 1 OR is_delete_pending_sync = 1 OR is_status_pending_sync = 1 OR is_photo_pending_sync = 1",
     );
     return data.map((e) {
       final map = Map<String, dynamic>.from(e);
@@ -221,7 +227,9 @@ class StudentLocalDS {
 
   Future<void> clearStudents() async {
     final db = await DBHelper.db;
-    await db.delete('students', where: 'is_offline = 0 AND is_extra = 0');
+    await db.delete('students',
+        where:
+            'is_offline = 0 AND is_offline_update = 0 AND is_extra_pending_sync = 0 AND is_delete_pending_sync = 0 AND is_status_pending_sync = 0 AND is_photo_pending_sync = 0 AND is_extra = 0');
   }
 
   Future<void> deleteStudent(String uuid) async {
@@ -252,6 +260,4 @@ class StudentLocalDS {
 
     return StudentDetailsData.fromJson(map);
   }
-
-
 }

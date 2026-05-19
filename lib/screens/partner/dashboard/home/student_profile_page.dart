@@ -17,6 +17,7 @@ import 'package:idmitra/providers/student_form/student_form_cubit.dart';
 import 'package:idmitra/providers/student_form/student_form_data_cubit.dart';
 import 'package:idmitra/screens/add_student/add_student_form.dart';
 import 'package:idmitra/utils/common_widgets/app_button.dart';
+import 'package:idmitra/providers/students/students_cubit.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -100,23 +101,21 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
   Future<void> _uploadImage(String path) async {
     setState(() => _isUploading = true);
     try {
-      var response = await ApiManager().multiRequestRoute(
-        path,
-        Config.baseUrl + Routes.updateStudentProfile(_student.uuid ?? ''),
-      );
-      if (response.statusCode == 200) {
-        final jsonData = jsonDecode(response.body);
-        final updatedUrl = jsonData['data']['profile_photo_url'];
-        setState(() {
-          _student = _student.copyWith(
-            profilePhotoUrl: updatedUrl,
+      await context.read<StudentsCubit>().uploadStudentImage(
+            path: path,
+            student: _student,
           );
-        });
-        
-        // 🔥 Save updated photo to Local DB
-        await _localDS.insertStudents([_student]);
-        debugPrint("Profile photo updated in Local DB");
-      }
+
+      // Refresh local state from Cubit
+      final cubit = context.read<StudentsCubit>();
+      final updatedStudent = cubit.state.studentsList.firstWhere(
+        (s) => s.uuid == _student.uuid,
+        orElse: () => _student,
+      );
+
+      setState(() {
+        _student = updatedStudent;
+      });
     } catch (e) {
       debugPrint("Upload error: $e");
     }
@@ -331,7 +330,8 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
 
   Widget _headerCard(BuildContext context) {
     final isActive = (_student.status ?? 0) == 1;
-    final hasPhoto = _student.profilePhotoUrl?.isNotEmpty ?? false;
+    final hasPhoto = (_student.profilePhotoUrl?.isNotEmpty ?? false) ||
+        (_student.isPhotoPendingSync && _student.offlinePhotoPath != null);
     final admNo = _student.admissionNo?.toString() ?? '';
     final phone = _student.phone?.toString() ?? '';
 
@@ -351,47 +351,56 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
         child: Column(
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    final url = _student.profilePhotoUrl;
+                    if (url != null && url.isNotEmpty) {
+                      _showImagePreview(context, url);
+                    } else if (_student.isPhotoPendingSync &&
+                        _student.offlinePhotoPath != null) {
+                      // Optionally show local image preview
+                    } else {
+                      _showPicker(context);
+                    }
+                  },
+                  child: Stack(
                     children: [
-                      GestureDetector(
-                        onTap: () {
-                          final url = _student.profilePhotoUrl;
-                          if (url != null && url.isNotEmpty) {
-                            _showImagePreview(context, url);
-                          } else {
-                            _showPicker(context);
-                          }
-                        },
-                        child: Stack(
-                          children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: AppTheme.btnColor.withOpacity(0.3), width: 3),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.1),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: CircleAvatar(
-                                radius: 40,
-                                backgroundColor: AppTheme.btnColor.withOpacity(0.1),
-                                backgroundImage: hasPhoto
-                                    ? NetworkImage(_student.profilePhotoUrl!)
-                                    : null,
-                                child: _isUploading
-                                    ? shimmerBox(width: 80, height: 80, radius: 40)
-                                    : !hasPhoto
-                                        ? Icon(Icons.person_rounded,
-                                            size: 40, color: AppTheme.btnColor)
-                                        : null,
-                              ),
+                      Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: AppTheme.btnColor.withOpacity(0.3),
+                              width: 3),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
                             ),
+                          ],
+                        ),
+                        child: CircleAvatar(
+                          radius: 40,
+                          backgroundColor: AppTheme.btnColor.withOpacity(0.1),
+                          backgroundImage: _student.isPhotoPendingSync &&
+                                  _student.offlinePhotoPath != null
+                              ? FileImage(File(_student.offlinePhotoPath!))
+                                  as ImageProvider
+                              : (_student.profilePhotoUrl?.isNotEmpty ?? false)
+                                  ? NetworkImage(_student.profilePhotoUrl!)
+                                  : null,
+                          child: _isUploading
+                              ? shimmerBox(width: 80, height: 80, radius: 40)
+                              : !hasPhoto
+                                  ? Icon(Icons.person_rounded,
+                                      size: 40, color: AppTheme.btnColor)
+                                  : null,
+                        ),
+                      ),
                             Positioned(
                               bottom: 2, right: 2,
                               child: Container(
