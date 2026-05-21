@@ -417,15 +417,19 @@ class _OrdersViewState extends State<_OrdersView> {
         loading: state.classesLoading,
         items: [
           const DropdownMenuItem(value: '', child: Text('All Classes')),
-          ...state.availableClasses.map(
-                (c) => DropdownMenuItem(
-              value: c.classId.toString(),
-              child: Text(
-                c.nameWithprefix ?? c.name,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ),
+          ...state.availableClasses.map((c) {
+            final clsName = c.nameWithprefix ?? c.name;
+            final displayName = c.sectionName.isNotEmpty
+                ? '$clsName (${c.sectionName})'
+                : clsName;
+            final itemValue = c.sectionId != null
+                ? '${c.classId}_${c.sectionId}'
+                : c.classId.toString();
+            return DropdownMenuItem(
+              value: itemValue,
+              child: Text(displayName, overflow: TextOverflow.ellipsis),
+            );
+          }),
         ],
         onChanged: (v) {
           setState(() => _selectedClass = v ?? '');

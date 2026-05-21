@@ -4,26 +4,26 @@ import 'package:idmitra/Widgets/CommonAppBar.dart';
 import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/components/my_font_weight.dart';
 import 'package:idmitra/config/ScreenSize.dart';
-import 'package:idmitra/local_db/student_local_ds/student_local_ds.dart';
 import 'package:idmitra/models/schools/SchoolListModel.dart';
 import 'package:idmitra/providers/student_form/student_form_cubit.dart';
-import 'package:idmitra/screens/edit_profile/image_setting.dart';
 import 'package:idmitra/screens/edit_profile/student_form.dart';
-
-import 'package:idmitra/screens/partner/dashboard/home/student_list.dart';
-import 'package:idmitra/screens/staff/staff_student_list/staff_list.dart';
+import 'package:idmitra/screens/home/student_list.dart';
+import 'package:idmitra/screens/orders/orders_page.dart';
+import 'package:idmitra/screens/staff/staff_student_list/staff_student_list.dart';
 import 'package:idmitra/utils/navigation_utils.dart';
+import '../../../local_db/student_local_ds/student_local_ds.dart';
+import '../../edit_profile/image_setting.dart';
+import '../../staff/staff_student_list/staff_list.dart';
 
-
-class SchoolDetailsPage extends StatefulWidget {
+class UserDetailsPage extends StatefulWidget {
   SchoolDetailsModel? schoolDetailsModel;
-  SchoolDetailsPage({super.key, this.schoolDetailsModel});
+  UserDetailsPage({super.key, this.schoolDetailsModel});
 
   @override
-  State<SchoolDetailsPage> createState() => _SchoolDetailsPageState();
+  State<UserDetailsPage> createState() => _UserDetailsPageState();
 }
 
-class _SchoolDetailsPageState extends State<SchoolDetailsPage> {
+class _UserDetailsPageState extends State<UserDetailsPage> {
   List<String> tabs = [
     "Overview",
     // "Documents",
@@ -261,8 +261,8 @@ class _UserDetailsContent extends StatelessWidget {
                 children: [
                   statCard(
                     title: "STUDENTS",
-                    value: localStudentCount > 0 
-                        ? "$localStudentCount" 
+                    value: localStudentCount > 0
+                        ? "$localStudentCount"
                         : "${schoolDetailsModel?.studentCount ?? '0'}",
                     callBtn: () => navigateWithTransition(
                       context: context,

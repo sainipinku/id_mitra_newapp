@@ -14,6 +14,7 @@ import 'package:idmitra/models/student_form/StudentFormFieldsModel.dart';
 import 'package:idmitra/models/students/StudentsListModel.dart'
     hide ClassOption;
 import 'package:idmitra/providers/student_form/student_form_cubit.dart';
+import 'package:idmitra/local_db/student_local_ds/student_local_ds.dart';
 
 import 'package:idmitra/utils/common_widgets/app_button.dart';
 import 'package:idmitra/utils/common_widgets/drop_down/drop_down.dart';
@@ -24,7 +25,6 @@ import '../../../providers/add_student/add_student_cubit.dart';
 import '../../../providers/student_form/student_form_data_cubit.dart';
 import '../../../api_mamanger/api_manager.dart';
 import '../../../api_mamanger/config.dart';
-import '../../../local_db/student_local_ds/student_local_ds.dart';
 import '../../add_student/student_assign_class_sheet.dart';
 
 const List<String> _kGenderOptions = [
@@ -33,7 +33,6 @@ const List<String> _kGenderOptions = [
   'Female',
   'Transgender',
 ];
-const List<String> _kSectionOptions = ['A', 'B', 'C', 'D'];
 const List<String> _kTransportOptions = [
   'Select Mode',
   'self_pickup',
@@ -84,7 +83,7 @@ class _StaffAddStudentFormPageState extends State<StaffAddStudentFormPage>
   void initState() {
     super.initState();
     _tabController = TabController(
-      length: 2,
+      length: widget.editStudent != null ? 1 : 2,
       vsync: this,
       initialIndex: widget.initialTab,
     );
@@ -105,43 +104,47 @@ class _StaffAddStudentFormPageState extends State<StaffAddStudentFormPage>
     if (_extraLoading) return;
     setState(() => _extraLoading = true);
     try {
-      // 1. Fetch from Local DB first
-      final localDS = StudentLocalDS();
-      final localExtra = await localDS.getExtraStudents();
-      setState(() {
-        _extraStudents = localExtra;
-      });
-
-      // 2. Sync from API
-      final response = await ApiManager().getRequest(
-        "${Config.baseUrl}auth/school/${widget.schoolId}?is_moved=1",
-      );
-      if (response != null && response.statusCode == 200) {
-        final jsonData = jsonDecode(response.body);
-        final List list = jsonData["data"]?["data"] ?? [];
-        final newList = list.map((e) {
-          final s = StudentDetailsData.fromJson(e);
-          return s.copyWith(isExtra: true);
-        }).toList();
-
-        // Save to Local DB
-        await localDS.insertStudents(newList);
+      // ── Step 1: Try local DB first (instant load) ──
+      final localExtra = await StudentLocalDS().getExtraStudents();
+      if (mounted) {
+        setState(() => _extraStudents = localExtra);
       }
 
-      // 3. Final fetch from Local DB
-      final finalExtra = await localDS.getExtraStudents();
-      setState(() {
-        _extraStudents = finalExtra;
-      });
+      // ── Step 2: Fetch from API if online ──
+      bool hasInternet = false;
+      try {
+        final result = await InternetAddress.lookup('google.com');
+        hasInternet = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+      } catch (_) {
+        hasInternet = false;
+      }
+
+      if (hasInternet) {
+        final response = await ApiManager().getRequest(
+          "${Config.baseUrl}auth/school/${widget.schoolId}?is_moved=1",
+        );
+        if (response != null && response.statusCode == 200) {
+          final jsonData = jsonDecode(response.body);
+          final List list = jsonData["data"]?["data"] ?? [];
+          final apiStudents =
+              list.map((e) => StudentDetailsData.fromJson(e)).toList();
+
+          // Save to local DB (marking them as extra)
+          await StudentLocalDS().insertStudents(
+              apiStudents.map((s) => s.copyWith(isExtra: true)).toList());
+
+          if (mounted) {
+            final updatedExtra = await StudentLocalDS().getExtraStudents();
+            setState(() => _extraStudents = updatedExtra);
+          }
+        }
+      }
     } catch (e) {
       debugPrint("Fetch extra students error: $e");
-      // Fallback to local data
-      final localExtra = await StudentLocalDS().getExtraStudents();
-      setState(() {
-        _extraStudents = localExtra;
-      });
     }
-    setState(() => _extraLoading = false);
+    if (mounted) {
+      setState(() => _extraLoading = false);
+    }
   }
 
   bool _hasAdditionalData(StudentDetailsData s) {
@@ -232,6 +235,10 @@ class _StaffAddStudentFormPageState extends State<StaffAddStudentFormPage>
       case 'house':
         return (data?.houses ?? []).isEmpty;
       case 'class_section':
+      case 'school_class_section_id':
+      case 'section':
+      case 'school_class_section_id':
+      case 'section':
         final selectedClassId = _toInt(_selectVal['class']);
         if (selectedClassId == null) return true;
         final selectedClass = data?.classes.firstWhere(
@@ -532,22 +539,41 @@ class _StaffAddStudentFormPageState extends State<StaffAddStudentFormPage>
   }
 
   Widget _classDropdown(List<ClassOption> classes) {
-    if (classes.isEmpty) return _loadingTile('Loading classes...');
-    final seen = <String>{};
-    final unique = classes.where((c) => seen.add(c.nameWithPrefix)).toList();
+    if (classes.isEmpty) {
+      return _loadingTile('Loading classes...');
+    }
+
     final val = _toInt(_selectVal['class']);
-    final selected = (val != null && unique.any((c) => c.id == val))
-        ? unique.firstWhere((c) => c.id == val)
+
+    final selected = (val != null &&
+        classes.any((c) => c.id == val))
+        ? classes.firstWhere((c) => c.id == val)
         : null;
+
     return Dropdown<ClassOption>(
       value: selected,
-      items: unique,
+      items: classes,
       hintText: 'Select Class',
       onChange: (v) {
         setState(() {
           _selectVal['class'] = v?.id;
-          _selectVal['class_section'] = null;
+
+          // IMPORTANT
+          if (v != null &&
+              v.sections.isNotEmpty) {
+            _selectVal['class_section'] =
+                v.sections.first.id;
+          } else if (v != null &&
+              v.sectionsIds.isNotEmpty) {
+            _selectVal['class_section'] =
+                v.sectionsIds.first;
+          } else {
+            _selectVal['class_section'] = null;
+          }
         });
+
+        debugPrint(
+            "AUTO SECTION => ${_selectVal['class_section']}");
       },
       displayText: (_, o) => o.nameWithPrefix,
       showClearButton: false,
@@ -572,38 +598,32 @@ class _StaffAddStudentFormPageState extends State<StaffAddStudentFormPage>
     );
   }
 
-  Widget _sectionDropdown(List<SectionOption> sections) {
-    final val = _toInt(_selectVal['class_section']);
+  Widget _sectionDropdown(
+      List<SectionOption> sections) {
+    final val =
+    _toInt(_selectVal['class_section']);
+
     SectionOption? selected;
-    if (val != null) {
-      if (sections.any((s) => s.id == val)) {
-        selected = sections.firstWhere((s) => s.id == val);
-      } else {
-        selected = SectionOption(id: val, name: 'Section $val');
-        if (!sections.contains(selected)) {
-          sections = [selected, ...sections];
-        }
-      }
+
+    if (val != null &&
+        sections.any((s) => s.id == val)) {
+      selected =
+          sections.firstWhere((s) => s.id == val);
     }
+
     return Dropdown<SectionOption>(
       value: selected,
       items: sections,
-      hintText: sections.isEmpty ? 'No sections available' : 'Select Section',
-      onChange: (v) => setState(() => _selectVal['class_section'] = v?.id),
-      displayText: (_, o) => o.name,
-      showClearButton: false,
-    );
-  }
-
-  Widget _staticSectionDropdown() {
-    final val = (_selectVal['class_section'] as String?);
-    final selected = (val != null && _kSectionOptions.contains(val)) ? val : null;
-    return Dropdown<String>(
-      value: selected,
-      items: _kSectionOptions,
       hintText: 'Select Section',
-      onChange: (v) => setState(() => _selectVal['class_section'] = v),
-      displayText: (_, o) => o,
+      onChange: (v) {
+        setState(() {
+          _selectVal['class_section'] = v?.id;
+        });
+
+        debugPrint(
+            "SELECTED SECTION => ${v?.id}");
+      },
+      displayText: (_, o) => o.name,
       showClearButton: false,
     );
   }
@@ -926,44 +946,134 @@ class _StaffAddStudentFormPageState extends State<StaffAddStudentFormPage>
     }
   }
 
-  Widget _dynamicSelectField(String name, StudentFormDataModel? data) {
+  Widget _dynamicSelectField(
+      String name,
+      StudentFormDataModel? data,
+      ) {
     switch (name) {
+
+
       case 'session':
         return _sessionDropdown(data?.sessions ?? []);
+
+
       case 'class':
         return _classDropdown(data?.classes ?? []);
+
+
       case 'house':
         return _houseDropdown(data?.houses ?? []);
+
+
       case 'gender':
-        return _stringDropdown(name, _kGenderOptions);
+        return _stringDropdown(
+          name,
+          _kGenderOptions,
+        );
+
+
       case 'transport_mode':
         return _transportDropdown();
+
+
       case 'blood_group':
-        return _stringDropdown(name, _kBloodGroupOptions);
-      case 'is_rte_student':
-        return _stringDropdown(name, _kRteOptions);
-      case 'class_section':
-        final selectedClassId = _toInt(_selectVal['class']);
-        if (selectedClassId == null) {
-          return _loadingTile('Select a class first');
-        }
-        final selectedClass = data?.classes.firstWhere(
-          (c) => c.id == selectedClassId,
-          orElse: () => ClassOption(id: -1, name: '', nameWithPrefix: ''),
+        return _stringDropdown(
+          name,
+          _kBloodGroupOptions,
         );
-        var sections = selectedClass?.sections ?? [];
-        if (sections.isEmpty &&
-            (selectedClass?.sectionsIds.isNotEmpty ?? false)) {
-          sections = selectedClass!.sectionsIds
-              .map((id) => SectionOption(id: id, name: 'Section $id'))
-              .toList();
+
+
+      case 'is_rte_student':
+        return _stringDropdown(
+          name,
+          _kRteOptions,
+        );
+
+
+      case 'class_section':
+      case 'school_class_section_id':
+      case 'section':
+
+        final selectedClassId =
+        _toInt(_selectVal['class']);
+
+        debugPrint(
+          "SELECTED CLASS ID => $selectedClassId",
+        );
+
+        if (selectedClassId == null) {
+          return _loadingTile(
+            'Select a class first',
+          );
         }
+
+        final selectedClass = data?.classes.firstWhere(
+              (c) => c.id == selectedClassId,
+          orElse: () => ClassOption(
+            id: -1,
+            name: '',
+            nameWithPrefix: '',
+          ),
+        );
+
+        List<SectionOption> sections =
+            selectedClass?.sections ?? [];
+
+        debugPrint(
+          "SECTIONS => ${sections.map((e) => e.id).toList()}",
+        );
+
         if (sections.isEmpty) {
-          return _staticSectionDropdown();
+          return _loadingTile(
+            'No sections available',
+          );
         }
-        return _sectionDropdown(sections);
+
+        final int? selectedSectionId =
+        _toInt(_selectVal['class_section']);
+
+        SectionOption? selectedSection;
+
+        if (selectedSectionId != null) {
+          try {
+            selectedSection = sections.firstWhere(
+                  (s) => s.id == selectedSectionId,
+            );
+          } catch (_) {
+            selectedSection = null;
+          }
+        }
+
+        return Dropdown<SectionOption>(
+          value: selectedSection,
+
+          items: sections,
+
+          hintText: 'Select Section',
+
+          onChange: (v) {
+            setState(() {
+
+              _selectVal['class_section'] = v?.id;
+
+              debugPrint(
+                "SELECTED SECTION => ${_selectVal['class_section']}",
+              );
+            });
+          },
+
+          displayText: (_, o) => o.name,
+
+          showClearButton: false,
+        );
+
+    // ================= DEFAULT =================
+
       default:
-        return _stringDropdown(name, ['-Select-']);
+        return _stringDropdown(
+          name,
+          ['-Select-'],
+        );
     }
   }
 
@@ -1136,34 +1246,34 @@ class _StaffAddStudentFormPageState extends State<StaffAddStudentFormPage>
     List<StudentFormField> additionalFields,
     StudentFormDataModel? data,
   ) {
-    Widget? _inlineSectionWidget() {
-      final selectedClassId = _toInt(_selectVal['class']);
-      if (selectedClassId == null) return null;
-      final hasClassField = currentFields.any((f) => f.name == 'class');
-      if (!hasClassField) return null;
-      final hasSectionField = currentFields.any((f) => f.name == 'class_section') ||
-          (data?.classes ?? []).isEmpty;
-      if (hasSectionField) return null;
 
-      final selectedClass = data?.classes.firstWhere(
-        (c) => c.id == selectedClassId,
-        orElse: () => ClassOption(id: -1, name: '', nameWithPrefix: ''),
-      );
-      var sections = selectedClass?.sections ?? [];
-      if (sections.isEmpty && (selectedClass?.sectionsIds.isNotEmpty ?? false)) {
-        sections = selectedClass!.sectionsIds
-            .map((id) => SectionOption(id: id, name: 'Section $id'))
-            .toList();
+    Widget? _editModeSectionWidget() {
+      if (widget.editStudent == null) return null;
+      if (currentFields.any((f) => f.name == 'class_section')) return null;
+
+      final allSections = <SectionOption>[];
+      for (final cls in data?.classes ?? []) {
+        var sections = cls.sections;
+        if (sections.isEmpty && cls.sectionsIds.isNotEmpty) {
+          sections = cls.sectionsIds
+              .map((id) => SectionOption(id: id, name: 'Section $id'))
+              .toList();
+        }
+        for (final sec in sections) {
+          allSections.add(SectionOption(
+            id: sec.id,
+            name: '${cls.nameWithPrefix} - ${sec.name}',
+          ));
+        }
       }
-      if (sections.isEmpty) return null;
 
       return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.only(top: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _label('Section'),
-            _sectionDropdown(sections),
+            _label('Class_Section'),
+            _sectionDropdown(allSections),
           ],
         ),
       );
@@ -1196,15 +1306,23 @@ class _StaffAddStudentFormPageState extends State<StaffAddStudentFormPage>
                       children: [
                         _twoColGrid(currentFields, data),
                         Builder(builder: (_) {
-                          final sectionWidget = _inlineSectionWidget();
-                          if (sectionWidget == null) return const SizedBox.shrink();
-                          return sectionWidget;
+                          // Skip if section field is already in currentFields
+                          if (currentFields.any((f) =>
+                              f.name == 'class_section' ||
+                              f.name == 'school_class_section_id' ||
+                              f.name == 'section')) {
+                            return const SizedBox.shrink();
+                          }
+                          final w = _editModeSectionWidget();
+                          if (w == null) return const SizedBox.shrink();
+                          return w;
                         }),
                       ],
                     ),
             ),
-            if (additionalFields.isNotEmpty)
-              _additionalCollapsible(additionalFields, data),
+            // Additional Information section hidden for now
+            // if (additionalFields.isNotEmpty)
+            //   _additionalCollapsible(additionalFields, data),
           ],
         ),
       ),
@@ -1324,28 +1442,17 @@ class _StaffAddStudentFormPageState extends State<StaffAddStudentFormPage>
               ),
               body: Column(
                 children: [
-                  Container(
-                    margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    decoration: BoxDecoration(
-                      color: AppTheme.appBackgroundColor,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                  if (widget.editStudent == null)
+                  Material(
+                    color: Colors.white,
                     child: TabBar(
                       controller: _tabController,
-                      indicator: BoxDecoration(
-                        color: AppTheme.btnColor,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      labelColor: Colors.white,
+                      labelColor: AppTheme.btnColor,
                       unselectedLabelColor: AppTheme.graySubTitleColor,
-                      labelStyle: MyStyles.boldText(
-                        size: 13,
-                        color: Colors.white,
-                      ),
-                      unselectedLabelStyle: MyStyles.regularText(
-                        size: 13,
-                        color: AppTheme.graySubTitleColor,
-                      ),
+                      indicatorColor: AppTheme.btnColor,
+                      indicatorWeight: 2.5,
+                      labelStyle: MyStyles.mediumText(size: 13, color: Colors.white),
+                      unselectedLabelStyle: MyStyles.regularText(size: 13, color: Colors.white),
                       tabs: const [
                         Tab(text: 'Main Information'),
                         Tab(text: 'Other Student'),
@@ -1365,6 +1472,8 @@ class _StaffAddStudentFormPageState extends State<StaffAddStudentFormPage>
                               ),
                             ),
                           )
+                        : widget.editStudent != null
+                        ? _mainInfoTab(currentFields, additionalFields, data)
                         : TabBarView(
                             controller: _tabController,
                             children: [
@@ -1380,7 +1489,7 @@ class _StaffAddStudentFormPageState extends State<StaffAddStudentFormPage>
                   AnimatedBuilder(
                     animation: _tabController,
                     builder: (context, _) {
-                      if (_tabController.index == 1) return const SizedBox.shrink();
+                      if (widget.editStudent == null && _tabController.index == 1) return const SizedBox.shrink();
                       return Container(
                     padding: const EdgeInsets.all(16),
                     color: Colors.white,
@@ -1530,8 +1639,6 @@ class _StaffAddStudentFormPageState extends State<StaffAddStudentFormPage>
                                   : () {
                                       final allVisibleFields = [
                                         ...currentFields,
-                                        if (_additionalExpanded)
-                                          ...additionalFields,
                                       ];
                                       final validationError = _validateForm(
                                         allVisibleFields,
@@ -1554,6 +1661,12 @@ class _StaffAddStudentFormPageState extends State<StaffAddStudentFormPage>
                                         ),
                                         ..._selectVal,
                                       };
+
+                                      final allConfiguredFieldNames =
+                                          currentFields
+                                              .map((f) => f.name)
+                                              .toList();
+
                                       if (widget.editStudent != null) {
                                         ctx
                                             .read<AddStudentCubit>()
@@ -1564,13 +1677,21 @@ class _StaffAddStudentFormPageState extends State<StaffAddStudentFormPage>
                                               schoolId: widget.schoolId,
                                               fields: allFields,
                                               files: _files,
+                                              formDataModel: data,
+                                              allConfiguredFieldNames:
+                                                  allConfiguredFieldNames,
+                                              existingStudent:
+                                                  widget.editStudent,
                                             );
                                       } else {
                                         ctx.read<AddStudentCubit>().submit(
-                                          schoolId: widget.schoolId,
-                                          fields: allFields,
-                                          files: _files,
-                                        );
+                                              schoolId: widget.schoolId,
+                                              fields: allFields,
+                                              files: _files,
+                                              formDataModel: data,
+                                              allConfiguredFieldNames:
+                                                  allConfiguredFieldNames,
+                                            );
                                       }
                                     },
                             ),

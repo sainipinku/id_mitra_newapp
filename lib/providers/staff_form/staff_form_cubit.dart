@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
 import 'package:idmitra/api_mamanger/config.dart';
@@ -6,6 +8,7 @@ import 'package:idmitra/api_mamanger/secure_storage.dart';
 import 'package:idmitra/db_helper.dart';
 import 'package:idmitra/models/student_form/StudentFormFieldsModel.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class StaffRole {
   final int id;
@@ -60,7 +63,9 @@ class StaffFormState {
     availableFields: availableFields ?? this.availableFields,
     roles: roles ?? this.roles,
     error: clearError ? null : (error ?? this.error),
-    successMessage: clearSuccess ? null : (successMessage ?? this.successMessage),
+    successMessage: clearSuccess
+        ? null
+        : (successMessage ?? this.successMessage),
     schoolName: schoolName ?? this.schoolName,
   );
 }
@@ -70,34 +75,67 @@ class StaffFormCubit extends Cubit<StaffFormState> {
 
   String _schoolId = '';
 
+  Future<bool> _hasInternet() async {
+    try {
+      final connectivity = await Connectivity().checkConnectivity();
+      if (connectivity.contains(ConnectivityResult.none) &&
+          connectivity.length == 1) {
+        return false;
+      }
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   void clearMessages() {
     emit(state.copyWith(clearError: true, clearSuccess: true));
   }
 
-  Future<void> loadFields(String schoolId) async {
+  Future<void> loadFields(String schoolId, {String schoolName = ''}) async {
     _schoolId = schoolId;
-    emit(state.copyWith(loading: true, clearError: true));
+    emit(
+      state.copyWith(loading: true, clearError: true, schoolName: schoolName),
+    );
 
     // Step 1: Try local DB first (instant)
     final local = await _loadFromLocal(schoolId);
-    if (local != null) {
-      emit(state.copyWith(
-        loading: false,
-        fields: local.$1,
-        availableFields: local.$2,
-        roles: local.$3,
-      ));
+    if (local != null && local.$1.isNotEmpty) {
+      emit(
+        state.copyWith(
+          loading: false,
+          fields: local.$1,
+          availableFields: local.$2,
+          roles: local.$3,
+          schoolName: schoolName,
+        ),
+      );
       // Background sync
-      _syncFromApi(schoolId);
+      _syncFromApi(schoolId, schoolName: schoolName);
       return;
     }
 
-    // Step 2: No local data — fetch from API
-    await _syncFromApi(schoolId, emitStates: true);
+    // Step 2: No local data — check internet
+    if (!await _hasInternet()) {
+      emit(
+        state.copyWith(
+          loading: false,
+          fields: _partnerDefaultFields(),
+          availableFields: _partnerDefaultFields(),
+          schoolName: schoolName,
+        ),
+      );
+      return;
+    }
+
+    // Step 3: Fetch from API
+    await _syncFromApi(schoolId, emitStates: true, schoolName: schoolName);
   }
 
-  /// Load staff form fields + roles from local DB
-  Future<(List<StudentFormField>, List<StudentFormField>, List<StaffRole>)?> _loadFromLocal(String schoolId) async {
+  // Load staff form fields + roles from local DB
+  Future<(List<StudentFormField>, List<StudentFormField>, List<StaffRole>)?>
+  _loadFromLocal(String schoolId) async {
     try {
       final db = await DBHelper.db;
       final rows = await db.query(
@@ -109,21 +147,30 @@ class StaffFormCubit extends Cubit<StaffFormState> {
       if (rows.isEmpty) return null;
 
       final row = rows.first;
-      final rawFields = jsonDecode(row['fields_json'] as String? ?? '[]') as List;
-      final rawAvailable = jsonDecode(row['available_fields_json'] as String? ?? '[]') as List;
+      final rawFields =
+          jsonDecode(row['fields_json'] as String? ?? '[]') as List;
+      final rawAvailable =
+          jsonDecode(row['available_fields_json'] as String? ?? '[]') as List;
       final rawRoles = jsonDecode(row['roles_json'] as String? ?? '[]') as List;
 
       final fields = rawFields
           .map((e) => StudentFormField.fromJson(Map<String, dynamic>.from(e)))
           .toList();
       final available = rawAvailable.isNotEmpty
-          ? rawAvailable.map((e) => StudentFormField.fromJson(Map<String, dynamic>.from(e))).toList()
+          ? rawAvailable
+                .map(
+                  (e) =>
+                      StudentFormField.fromJson(Map<String, dynamic>.from(e)),
+                )
+                .toList()
           : fields;
       final roles = rawRoles
           .map((e) => StaffRole.fromJson(Map<String, dynamic>.from(e)))
           .toList();
 
-      print('[StaffForm] Loaded from local DB — fields: ${fields.length}, roles: ${roles.length}');
+      print(
+        '[StaffForm] Loaded from local DB — fields: ${fields.length}, roles: ${roles.length}',
+      );
       return (fields, available, roles);
     } catch (e) {
       print('[StaffForm] Local load error: $e');
@@ -131,14 +178,19 @@ class StaffFormCubit extends Cubit<StaffFormState> {
     }
   }
 
-  /// Fetch from API and save to local DB
-  Future<void> _syncFromApi(String schoolId, {bool emitStates = false}) async {
+  Future<void> _syncFromApi(
+    String schoolId, {
+    bool emitStates = false,
+    String schoolName = '',
+  }) async {
     try {
       final token = await UserSecureStorage.fetchToken();
       final role = await UserSecureStorage.fetchRole();
       final isPartner = role == 'partner';
 
-      print('[StaffForm] Syncing from API — schoolId: $schoolId, isPartner: $isPartner');
+      print(
+        '[StaffForm] Syncing from API — schoolId: $schoolId, isPartner: $isPartner',
+      );
 
       final headers = {
         'Authorization': 'Bearer $token',
@@ -150,11 +202,16 @@ class StaffFormCubit extends Cubit<StaffFormState> {
       List<StaffRole> roles = [];
 
       // Fetch staff form fields
-      final fieldsUrl = Config.url(Routes.getStaffFormFields(schoolId, isPartner: isPartner));
+      final fieldsUrl = Config.url(
+        Routes.getStaffFormFields(schoolId, isPartner: isPartner),
+      );
       print('[StaffForm] Fields URL: $fieldsUrl');
 
       try {
-        final fieldsResp = await http.get(Uri.parse(fieldsUrl), headers: headers);
+        final fieldsResp = await http.get(
+          Uri.parse(fieldsUrl),
+          headers: headers,
+        );
         print('[StaffForm] Fields status: ${fieldsResp.statusCode}');
 
         if (fieldsResp.statusCode == 200) {
@@ -163,13 +220,20 @@ class StaffFormCubit extends Cubit<StaffFormState> {
 
           if (formData != null) {
             final List currentFields = formData['staff_form_fields'] ?? [];
-            final List availableFieldsList = formData['available_staff_form_fields'] ?? [];
+            final List availableFieldsList =
+                formData['available_staff_form_fields'] ?? [];
 
             fields = currentFields
-                .map((e) => StudentFormField.fromJson(Map<String, dynamic>.from(e)))
+                .map(
+                  (e) =>
+                      StudentFormField.fromJson(Map<String, dynamic>.from(e)),
+                )
                 .toList();
             availableFields = availableFieldsList
-                .map((e) => StudentFormField.fromJson(Map<String, dynamic>.from(e)))
+                .map(
+                  (e) =>
+                      StudentFormField.fromJson(Map<String, dynamic>.from(e)),
+                )
                 .toList();
           }
         }
@@ -189,7 +253,10 @@ class StaffFormCubit extends Cubit<StaffFormState> {
 
       for (final rolesUrl in rolesUrls) {
         try {
-          final rolesResp = await http.get(Uri.parse(rolesUrl), headers: headers);
+          final rolesResp = await http.get(
+            Uri.parse(rolesUrl),
+            headers: headers,
+          );
           if (rolesResp.statusCode == 200) {
             final rJson = jsonDecode(rolesResp.body);
             List rawRoles = _extractRolesList(rJson);
@@ -203,69 +270,94 @@ class StaffFormCubit extends Cubit<StaffFormState> {
         }
       }
 
-      // Save to local DB
+      // Save to local DB only if we got data
       if (fields.isNotEmpty || roles.isNotEmpty) {
         await _saveToLocal(schoolId, fields, availableFields, roles);
       }
 
-      emit(state.copyWith(
-        loading: false,
-        fields: fields,
-        availableFields: availableFields,
-        roles: roles,
-      ));
+      if (emitStates || fields.isNotEmpty) {
+        emit(
+          state.copyWith(
+            loading: false,
+            fields: fields,
+            availableFields: availableFields,
+            roles: roles,
+            schoolName: schoolName,
+          ),
+        );
+      }
     } catch (e) {
       print('[StaffForm] Sync error: $e');
       if (emitStates) {
-        emit(state.copyWith(loading: false, error: e.toString()));
+        emit(
+          state.copyWith(loading: false, error: 'Failed to sync staff fields'),
+        );
       }
     }
   }
 
-  /// Save staff form fields + roles to local DB
+  // Save staff form fields + roles to local DB
   Future<void> _saveToLocal(
-      String schoolId,
-      List<StudentFormField> fields,
-      List<StudentFormField> availableFields,
-      List<StaffRole> roles,
-      ) async {
+    String schoolId,
+    List<StudentFormField> fields,
+    List<StudentFormField> availableFields,
+    List<StaffRole> roles,
+  ) async {
     try {
       final db = await DBHelper.db;
 
-      final fieldsJson = jsonEncode(fields.map((f) => {
-        'name': f.name, 'label': f.label, 'type': f.type,
-        'group': f.group, 'group_label': f.groupLabel,
-        'required': f.required, 'order': f.order,
-      }).toList());
-
-      final availableJson = jsonEncode(availableFields.map((f) => {
-        'name': f.name, 'label': f.label, 'type': f.type,
-        'group': f.group, 'group_label': f.groupLabel,
-        'required': f.required, 'order': f.order,
-      }).toList());
-
-      final rolesJson = jsonEncode(roles.map((r) => {
-        'id': r.id, 'uuid': r.uuid, 'name': r.name,
-      }).toList());
-
-      await db.insert(
-        'school_form_fields',
-        {
-          'school_id': 'staff_$schoolId',
-          'fields_json': fieldsJson,
-          'available_fields_json': availableJson,
-          'roles_json': rolesJson,
-          'updated_at': DateTime.now().millisecondsSinceEpoch,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
+      final fieldsJson = jsonEncode(
+        fields
+            .map(
+              (f) => {
+                'name': f.name,
+                'label': f.label,
+                'type': f.type,
+                'group': f.group,
+                'group_label': f.groupLabel,
+                'required': f.required,
+                'order': f.order,
+              },
+            )
+            .toList(),
       );
+
+      final availableJson = jsonEncode(
+        availableFields
+            .map(
+              (f) => {
+                'name': f.name,
+                'label': f.label,
+                'type': f.type,
+                'group': f.group,
+                'group_label': f.groupLabel,
+                'required': f.required,
+                'order': f.order,
+              },
+            )
+            .toList(),
+      );
+
+      final rolesJson = jsonEncode(
+        roles.map((r) => {'id': r.id, 'uuid': r.uuid, 'name': r.name}).toList(),
+      );
+
+      await db.insert('school_form_fields', {
+        'school_id': 'staff_$schoolId',
+        'fields_json': fieldsJson,
+        'available_fields_json': availableJson,
+        'roles_json': rolesJson,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
       print('[StaffForm] Saved to local DB — school: $schoolId');
     } catch (e) {
       print('[StaffForm] Local save error: $e');
     }
   }
 
-  Future<void> updateStaffFormFields(List<StudentFormField> updatedFields) async {
+  Future<void> updateStaffFormFields(
+    List<StudentFormField> updatedFields,
+  ) async {
     emit(state.copyWith(saving: true, clearError: true, clearSuccess: true));
 
     final token = await UserSecureStorage.fetchToken();
@@ -281,31 +373,38 @@ class StaffFormCubit extends Cubit<StaffFormState> {
       },
       body: jsonEncode({
         'fields': updatedFields
-            .map((f) => {
-          'name': f.name,
-          'label': f.label,
-          'group': f.group,
-          'group_label': f.groupLabel,
-          'type': f.type,
-          'required': f.required,
-          'order': f.order,
-        })
+            .map(
+              (f) => {
+                'name': f.name,
+                'label': f.label,
+                'group': f.group,
+                'group_label': f.groupLabel,
+                'type': f.type,
+                'required': f.required,
+                'order': f.order,
+              },
+            )
             .toList(),
       }),
     );
 
     if (response.statusCode == 200) {
       final json = jsonDecode(response.body);
-      emit(state.copyWith(
-        saving: false,
-        successMessage: json['message'] ?? 'Staff form fields updated successfully',
-        fields: updatedFields,
-      ));
+      emit(
+        state.copyWith(
+          saving: false,
+          successMessage:
+              json['message'] ?? 'Staff form fields updated successfully',
+          fields: updatedFields,
+        ),
+      );
     } else {
-      emit(state.copyWith(
-        saving: false,
-        error: 'Update failed: ${response.statusCode}',
-      ));
+      emit(
+        state.copyWith(
+          saving: false,
+          error: 'Update failed: ${response.statusCode}',
+        ),
+      );
     }
   }
 
@@ -317,7 +416,14 @@ class StaffFormCubit extends Cubit<StaffFormState> {
       final val = json[key];
       if (val is List && val.isNotEmpty) return val;
       if (val is Map) {
-        for (final innerKey in ['data', 'roles', 'items', 'result', 'results', 'list']) {
+        for (final innerKey in [
+          'data',
+          'roles',
+          'items',
+          'result',
+          'results',
+          'list',
+        ]) {
           final inner = val[innerKey];
           if (inner is List && inner.isNotEmpty) return inner;
         }
@@ -345,7 +451,8 @@ class StaffFormCubit extends Cubit<StaffFormState> {
         if (data.containsKey('fields')) {
           return {
             'staff_form_fields': data['fields'],
-            'available_staff_form_fields': data['fields'], // Same fields for available
+            'available_staff_form_fields':
+                data['fields'], // Same fields for available
           };
         }
         return Map<String, dynamic>.from(data);
@@ -353,7 +460,8 @@ class StaffFormCubit extends Cubit<StaffFormState> {
     }
 
     // Return the json itself if it contains the expected fields
-    if (json.containsKey('staff_form_fields') || json.containsKey('available_staff_form_fields')) {
+    if (json.containsKey('staff_form_fields') ||
+        json.containsKey('available_staff_form_fields')) {
       return Map<String, dynamic>.from(json);
     }
 

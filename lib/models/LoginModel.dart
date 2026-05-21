@@ -111,6 +111,7 @@ class User {
   String? sig;
   Map<String, dynamic>? school;
   int? schoolId;
+  List<AssignedClass>? assignedClasses;
 
   User({
     this.id,
@@ -168,6 +169,7 @@ class User {
     this.sig,
     this.school,
     this.schoolId,
+    this.assignedClasses,
   });
 
   User copyWith({
@@ -331,6 +333,10 @@ class User {
     sig: json["sig"],
     school: json["school"] == null ? null : Map<String, dynamic>.from(json["school"]),
     schoolId: json["school_id"],
+    assignedClasses: json["assigned_classes"] == null
+        ? []
+        : List<AssignedClass>.from(
+            (json["assigned_classes"] as List).map((x) => AssignedClass.fromJson(x))),
   );
 
   Map<String, dynamic> toJson() => {
@@ -382,4 +388,36 @@ class User {
     "registered_time_human": registeredTimeHuman,
     "profile_photo_url": profilePhotoUrl,
   };
+}
+
+class AssignedClass {
+  final int id;
+  final String className;
+
+  const AssignedClass({required this.id, required this.className});
+
+  factory AssignedClass.fromJson(Map<String, dynamic> json) {
+    // Handle nested "class" object (from assigned-classes API response)
+    final classObj = json["class"] as Map<String, dynamic>?;
+    
+    // Handle both "id"/"school_class_id" for the class ID
+    final classId = classObj?["id"] 
+        ?? json["school_class_id"] 
+        ?? json["id"] 
+        ?? 0;
+    
+    // Handle both "name"/"class_name" for the class name
+    final name = classObj?["name"] 
+        ?? classObj?["name_withprefix"]
+        ?? json["class_name"] 
+        ?? json["name"] 
+        ?? '';
+    
+    return AssignedClass(
+      id: classId is int ? classId : int.tryParse(classId.toString()) ?? 0,
+      className: name.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {"id": id, "class_name": className};
 }

@@ -10,7 +10,7 @@ import 'package:idmitra/config/prefConstatnt.dart';
 import 'package:idmitra/providers/login_auth/login_cubit.dart';
 import 'package:idmitra/screens/auth/PasswordTextField.dart';
 import 'package:idmitra/screens/auth/password_screen.dart';
-import 'package:idmitra/screens/partner/dashboard/dashboard.dart';
+import 'package:idmitra/screens/dashboard/dashboard.dart';
 import 'package:idmitra/utils/common_widgets/app_button.dart';
 import 'package:idmitra/utils/navigation_utils.dart';
 
@@ -163,9 +163,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
               final schoolId = user?.school; // staff ke paas school object hota hai
               print('Login designation: $designation, accountType: $accountType, school: $schoolId');
 
-              // partner → partner Dashboard
-              // school staff (has school_id / school object, not partner) → StaffDashboard
-              // school_admin / super_admin → AdminDashboard
+
               if (designation == 'partner' || accountType == 'partner') {
                 navigateAndRemoveUntil(
                   context: context,

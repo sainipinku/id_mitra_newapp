@@ -17,8 +17,10 @@ import 'package:idmitra/utils/MyStyles.dart';
 import 'package:idmitra/utils/navigation_utils.dart';
 import 'package:page_transition/page_transition.dart';
 
+import 'package:idmitra/providers/admin_students/admin_students_cubit.dart';
 import 'package:idmitra/providers/staff/staff_cubit.dart';
 import 'package:idmitra/providers/students/students_cubit.dart';
+import '../../parent/parent_dashboard.dart';
 import '../../staff/staff_student_list/staff_list.dart';
 import '../admin_edit_profile/admin_profile_page.dart';
 import 'admin_home.dart';
@@ -27,7 +29,7 @@ import 'admin_students_list.dart';
 class AdminDashboard extends StatefulWidget {
   SchoolDetailsModel? schoolDetailsModel;
 
-   AdminDashboard({super.key,this.schoolDetailsModel});
+  AdminDashboard({super.key,this.schoolDetailsModel});
 
   @override
   State<AdminDashboard> createState() => _AdminDashboardState();
@@ -93,7 +95,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
         _profileImage = user['profileImage'] ?? '';
         _schoolId = newSchoolId;
       });
-      // Trigger staff fetch once we have a valid schoolId
       if (newSchoolId.isNotEmpty) {
         _staffCubit.fetchStaff(schoolId: newSchoolId);
       }
@@ -154,14 +155,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
             final summary = dashState.dashboard?.data.summary;
             final schoolDetailsModel = dashSchool != null
                 ? SchoolDetailsModel(
-                    id: dashSchool.id,
-                    name: dashSchool.name,
-                    schoolPrefix: dashSchool.schoolPrefix,
-                    logoUrl: dashSchool.logoUrl,
-                    studentCount: summary?.students,
-                    staffCount: summary?.staff,
-                    orderCount: summary?.orders.total,
-                  )
+              id: dashSchool.id,
+              name: dashSchool.name,
+              schoolPrefix: dashSchool.schoolPrefix,
+              logoUrl: dashSchool.logoUrl,
+              studentCount: summary?.students,
+              staffCount: summary?.staff,
+              orderCount: summary?.orders.total,
+            )
                 : null;
             return Scaffold(
               appBar: _appBar(context, dashSchool, dashState),
@@ -272,7 +273,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       child: svgIcon(icon: 'assets/icons/home/notification.svg', clr: AppTheme.btnColor),
                     ),
                   ),
-                  onPressed: () {},
+                  onPressed: () {
+                    // Navigator.push(
+                    //   context,
+                    //   MaterialPageRoute(
+                    //     builder: (_) => const ParentDashboard(),
+                    //   ),
+                    // );
+                  },
                 ),
                 Positioned(
                   right: 8, top: 8,

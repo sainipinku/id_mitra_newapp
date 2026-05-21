@@ -211,6 +211,8 @@ const kOrderStatuses = [
   OrderStatusOption('work_in_process', 'Work In Process'),
   OrderStatusOption('completed', 'Completed'),
   OrderStatusOption('cancelled', 'Cancelled'),
+  OrderStatusOption('printing_issue', 'Printing Issue'),
+  OrderStatusOption('delivery_verified', 'Delivery Verified'),
 ];
 
 const kOrderFilterStatuses = [
@@ -220,4 +222,6 @@ const kOrderFilterStatuses = [
   OrderStatusOption('work_in_process', 'Work In Process'),
   OrderStatusOption('completed', 'Completed'),
   OrderStatusOption('cancelled', 'Cancelled'),
+  OrderStatusOption('printing_issue', 'Printing Issue'),
+  OrderStatusOption('delivery_verified', 'Delivery Verified'),
 ];

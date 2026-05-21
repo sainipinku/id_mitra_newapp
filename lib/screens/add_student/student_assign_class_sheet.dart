@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
+import 'package:sqflite/sqflite.dart';
+
 import 'package:idmitra/Widgets/shimmer_loader.dart';
 import 'package:idmitra/api_mamanger/config.dart';
 import 'package:idmitra/api_mamanger/secure_storage.dart';
@@ -10,7 +12,6 @@ import 'package:idmitra/components/my_font_weight.dart';
 import 'package:idmitra/db_helper.dart';
 import 'package:idmitra/providers/students/students_cubit.dart';
 import 'package:idmitra/utils/common_widgets/app_button.dart';
-import 'package:sqflite/sqflite.dart';
 
 class StudentAssignClassSheet extends StatefulWidget {
   final String schoolId;
@@ -76,13 +77,17 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
     _fetchData();
   }
 
+  // ─────────────────────────── FETCH DATA ───────────────────────────
+
   Future<void> _fetchData() async {
+    // Step 1: Load from local DB first (instant UI)
     final localData = await _loadFromLocal();
     if (localData != null) {
       _processData(localData);
       setState(() => _loading = false);
     }
 
+    // Step 2: Fetch from API and refresh
     try {
       final token = await UserSecureStorage.fetchToken();
       final url =
@@ -91,21 +96,23 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
         Uri.parse(url),
         headers: {
           'Authorization': 'Bearer $token',
-          'Accept': 'application/json'
+          'Accept': 'application/json',
         },
       );
+
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
         final data = json['data'] ?? json;
 
-        // Save to Local DB
+        // Save fresh data to local DB
         await _saveToLocal(data);
 
         _processData(data);
       }
     } catch (e) {
-      print('fetchData error: $e');
+      debugPrint('fetchData error: $e');
     }
+
     setState(() => _loading = false);
   }
 
@@ -148,10 +155,10 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
       return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
     });
 
-    setState(() {
-      _availableClasses = classes;
-    });
+    setState(() => _availableClasses = classes);
   }
+
+  // ─────────────────────────── LOCAL DB ───────────────────────────
 
   Future<void> _saveToLocal(Map<String, dynamic> data) async {
     try {
@@ -168,7 +175,7 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     } catch (e) {
-      print('saveToLocal error: $e');
+      debugPrint('saveToLocal error: $e');
     }
   }
 
@@ -190,10 +197,12 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
         'houses': jsonDecode(row['houses_json'] as String? ?? '[]'),
       };
     } catch (e) {
-      print('loadFromLocal error: $e');
+      debugPrint('loadFromLocal error: $e');
       return null;
     }
   }
+
+  // ─────────────────────────── ASSIGN ───────────────────────────
 
   Future<void> _assign() async {
     if (_selectedClass == null) {
@@ -204,14 +213,16 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
       );
       return;
     }
+
     setState(() => _adding = true);
+
     try {
       final success = await context.read<StudentsCubit>().assignClass(
-            studentUuid: widget.studentUuid,
-            schoolId: widget.schoolId,
-            classId: _selectedClass!.classId,
-            sectionId: _selectedClass!.sectionId,
-          );
+        studentUuid: widget.studentUuid,
+        schoolId: widget.schoolId,
+        classId: _selectedClass!.classId,
+        sectionId: _selectedClass!.sectionId,
+      );
 
       if (!mounted) return;
 
@@ -235,7 +246,7 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
         );
       }
     } catch (e) {
-      print('assign error: $e');
+      debugPrint('assign error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -244,8 +255,11 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
         );
       }
     }
+
     if (mounted) setState(() => _adding = false);
   }
+
+  // ─────────────────────────── UI ───────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -264,6 +278,7 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Header ──────────────────────────────────────────────────
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -288,6 +303,7 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
           ),
           const Divider(height: 24),
 
+          // ── Class List ───────────────────────────────────────────────
           Text('Select Class',
               style: MyStyles.mediumText(
                   size: 13, color: AppTheme.graySubTitleColor)),
@@ -297,7 +313,7 @@ class _StudentAssignClassSheetState extends State<StudentAssignClassSheet> {
             Column(
               children: List.generate(
                 4,
-                (i) => Padding(
+                    (i) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: shimmerBox(height: 44, radius: 8),
                 ),

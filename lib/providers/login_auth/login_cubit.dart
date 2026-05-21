@@ -33,6 +33,8 @@ class LoginCubit extends Cubit<LoginState> {
         LoginModel loginModel = LoginModel.fromJson(jsonData);
         print('Login user school: ${loginModel.user?.school}');
         print('Login user id: ${loginModel.user?.id}');
+        print('Raw assigned_classes: ${jsonData['user']?['assigned_classes']}');
+        print('Parsed assignedClasses: ${loginModel.user?.assignedClasses?.map((c) => c.toJson()).toList()}');
 
         // school data raw jsonData se extract karo
         final schoolData = (jsonData['user']?['school'] as Map<String, dynamic>?);

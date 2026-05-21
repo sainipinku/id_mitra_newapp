@@ -4,7 +4,6 @@ import 'package:idmitra/Widgets/CommonAppBar.dart';
 import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/components/my_font_weight.dart';
 import 'package:idmitra/config/ScreenSize.dart';
-import 'package:idmitra/local_db/student_local_ds/student_local_ds.dart';
 import 'package:idmitra/models/schools/SchoolListModel.dart';
 import 'package:idmitra/providers/staff_form/staff_form_cubit.dart';
 import 'package:idmitra/providers/student_form/student_form_cubit.dart';
@@ -21,7 +20,9 @@ import '../staff_student_list/staff_student_list.dart';
 
 class StaffUserDetailsPage extends StatefulWidget {
   SchoolDetailsModel? schoolDetailsModel;
-  StaffUserDetailsPage({super.key, this.schoolDetailsModel});
+  final List<int> assignedClassIds;
+
+  StaffUserDetailsPage({super.key, this.schoolDetailsModel, this.assignedClassIds = const [],});
 
   @override
   State<StaffUserDetailsPage> createState() => _StaffUserDetailsPageState();
@@ -30,25 +31,6 @@ class StaffUserDetailsPage extends StatefulWidget {
 class _StaffUserDetailsPageState extends State<StaffUserDetailsPage> {
   List<String> tabs = ["Overview", "Admin"];
   int selectedIndex = 0;
-  int localStudentCount = 0;
-  final StudentLocalDS _localDS = StudentLocalDS();
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchLocalCount();
-  }
-
-  Future<void> _fetchLocalCount() async {
-    if (widget.schoolDetailsModel != null) {
-      final count = await _localDS.getCount(
-        schoolId: widget.schoolDetailsModel!.id.toString(),
-      );
-      setState(() {
-        localStudentCount = count;
-      });
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,9 +38,7 @@ class _StaffUserDetailsPageState extends State<StaffUserDetailsPage> {
       schoolDetailsModel: widget.schoolDetailsModel,
       tabs: tabs,
       selectedIndex: selectedIndex,
-      localStudentCount: localStudentCount,
       onTabChanged: (i) => setState(() => selectedIndex = i),
-      onRefresh: _fetchLocalCount,
     );
   }
 }
@@ -67,17 +47,16 @@ class _StaffUserDetailsContent extends StatefulWidget {
   final SchoolDetailsModel? schoolDetailsModel;
   final List<String> tabs;
   final int selectedIndex;
-  final int localStudentCount;
   final void Function(int) onTabChanged;
-  final Future<void> Function() onRefresh;
+  final List<int> assignedClassIds;
 
   const _StaffUserDetailsContent({
     this.schoolDetailsModel,
     required this.tabs,
     required this.selectedIndex,
-    required this.localStudentCount,
     required this.onTabChanged,
-    required this.onRefresh,
+    this.assignedClassIds = const [],
+
   });
 
   @override
@@ -85,14 +64,16 @@ class _StaffUserDetailsContent extends StatefulWidget {
 }
 
 class _StaffUserDetailsContentState extends State<_StaffUserDetailsContent> {
+  Future<void> _onRefresh() async {
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final schoolDetailsModel = widget.schoolDetailsModel;
     final tabs = widget.tabs;
     final selectedIndex = widget.selectedIndex;
     final onTabChanged = widget.onTabChanged;
-    final localStudentCount = widget.localStudentCount;
-    final onRefresh = widget.onRefresh;
 
     return Scaffold(
       appBar: CommonAppBar(
@@ -109,7 +90,10 @@ class _StaffUserDetailsContentState extends State<_StaffUserDetailsContent> {
                 final schoolId = schoolDetailsModel?.id?.toString() ?? '';
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => ImageSettingsScreen(schoolId: schoolId)),
+                  MaterialPageRoute(builder: (context) => ImageSettingsScreen(
+                    schoolId: schoolId,
+                    schoolIntId: schoolDetailsModel?.id,
+                  )),
                 );
               } else if (value == 'student_form') {
                 final schoolId = schoolDetailsModel?.id?.toString() ?? '';
@@ -123,7 +107,7 @@ class _StaffUserDetailsContentState extends State<_StaffUserDetailsContent> {
                           ..loadFromSchoolId(schoolId: schoolId, schoolName: schoolName),
                       ),
                       BlocProvider(
-                        create: (_) => StaffFormCubit()..loadFields(schoolId),
+                        create: (_) => StaffFormCubit()..loadFields(schoolId, schoolName: schoolName),
                       ),
                     ],
                     child: StudentForm(schoolDetailsModel: widget.schoolDetailsModel!),
@@ -136,10 +120,10 @@ class _StaffUserDetailsContentState extends State<_StaffUserDetailsContent> {
                 value: 'image_settings',
                 child: Row(children: [Icon(Icons.image), SizedBox(width: 10), Text('Image Settings')]),
               ),
-              PopupMenuItem(
-                value: 'profile_settings',
-                child: Row(children: [Icon(Icons.person), SizedBox(width: 10), Text('Profile Settings')]),
-              ),
+              // PopupMenuItem(
+              //   value: 'profile_settings',
+              //   child: Row(children: [Icon(Icons.person), SizedBox(width: 10), Text('Profile Settings')]),
+              // ),
               PopupMenuItem(
                 value: 'student_form',
                 child: Row(children: [Icon(Icons.assignment), SizedBox(width: 10), Text('Student Form')]),
@@ -149,7 +133,7 @@ class _StaffUserDetailsContentState extends State<_StaffUserDetailsContent> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: onRefresh,
+        onRefresh: _onRefresh,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
@@ -280,32 +264,34 @@ class _StaffUserDetailsContentState extends State<_StaffUserDetailsContent> {
                 children: [
                   statCard(
                     title: "STUDENTS",
-                    value: localStudentCount > 0 
-                        ? "$localStudentCount" 
-                        : "${schoolDetailsModel?.studentCount ?? '0'}",
+                    value: "${schoolDetailsModel?.studentCount ?? ''}",
                     callBtn: () => navigateWithTransition(
                       context: context,
                       page: BlocProvider(
                         create: (_) => StudentsCubit(),
                         child: StaffStudentsScreen(
-                          schoolId: schoolDetailsModel?.id.toString() ?? '',
-                          showAppBar: true,
+                          schoolId: schoolDetailsModel?.id?.toString() ?? '',
                           schoolDetailsModel: schoolDetailsModel,
+                          showAppBar: true,
+                          assignedClassIds: widget.assignedClassIds,
                         ),
-                      ),
-                    ).then((_) => onRefresh()),
-                  ),
-                  statCard(
-                    title: "STAFF",
-                    value: "${schoolDetailsModel?.staffCount ?? '0'}",
-                    callBtn: () => navigateWithTransition(
-                      context: context,
-                      page: BlocProvider(
-                        create: (_) => StaffCubit(),
-                        child: StaffListingPage(schoolId: schoolDetailsModel?.id.toString() ?? ''),
                       ),
                     ),
                   ),
+                  // statCard(
+                  //   title: "STAFF",
+                  //   value: "${schoolDetailsModel?.staffCount ?? ''}",
+                  //   callBtn: () => navigateWithTransition(
+                  //     context: context,
+                  //     page: BlocProvider(
+                  //       create: (_) => StaffCubit(),
+                  //       child: StaffListingPage(
+                  //           schoolId: schoolDetailsModel?.id.toString() ?? '',
+                  //         schoolDetailsModel: schoolDetailsModel,
+                  //       ),
+                  //     ),
+                  //   ),
+                  // ),
                   // statCard(
                   //   title: "TOTAL ORDERS",
                   //   value: "${schoolDetailsModel?.orderCount ?? 0}",

@@ -441,10 +441,10 @@ class StudentFormCubit extends Cubit<StudentFormState> {
 
   /// Save form fields to local DB
   Future<void> _saveFieldsToLocal(
-    String schoolId,
-    List<StudentFormField> fields,
-    List<StudentFormField> availableFields,
-  ) async {
+      String schoolId,
+      List<StudentFormField> fields,
+      List<StudentFormField> availableFields,
+      ) async {
     try {
       final db = await DBHelper.db;
       final fieldsJson = jsonEncode(fields.map((f) => {
@@ -533,8 +533,8 @@ class StudentFormCubit extends Cubit<StudentFormState> {
   }
 
   Future<void> updateStudentFormFields(
-    List<StudentFormField> updatedFields,
-  ) async {
+      List<StudentFormField> updatedFields,
+      ) async {
     emit(state.copyWith(saving: true, error: null, successMessage: null));
 
     if (_schoolId.isEmpty) {
@@ -567,15 +567,15 @@ class StudentFormCubit extends Cubit<StudentFormState> {
         'fields': updatedFields
             .map(
               (f) => {
-                'name': f.name,
-                'label': f.label,
-                'group': f.group,
-                'group_label': f.groupLabel,
-                'type': f.type,
-                'required': f.required,
-                'order': f.order,
-              },
-            )
+            'name': f.name,
+            'label': f.label,
+            'group': f.group,
+            'group_label': f.groupLabel,
+            'type': f.type,
+            'required': f.required,
+            'order': f.order,
+          },
+        )
             .toList(),
       }),
     );

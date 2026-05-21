@@ -79,6 +79,10 @@ class Routes {
   }
   static String getOrderDetail(String uuid, {String schoolId = ''}) =>
       "auth/partner/orders/$uuid";
+
+  static String bulkUpdateStaffOrderStatus(String schoolId) =>
+      "auth/school/$schoolId/staff/orders/status";
+
   static String getStaffOrderDetail(String uuid, {required String schoolId}) =>
       "auth/partner/orders/$uuid";
   static String updateOrderStatus(String uuid, {String schoolId = ''}) =>
@@ -93,5 +97,26 @@ class Routes {
       "auth/school/$schoolId/students/$studentUuid/move-to-extra";
   static String assignStudent(String schoolId, String studentUuid) =>
       "auth/school/$schoolId/students/$studentUuid/assign";
+  static String getHolidays(String schoolId, {int? year, String search = ''}) {
+    String url = "auth/school/$schoolId/holidays?per_page=100";
+    if (year != null) url += "&year=$year";
+    if (search.isNotEmpty) url += "&search=$search";
+    return url;
+  }
+  static String addHoliday(String schoolId) => "auth/school/$schoolId/holidays";
+  static String deleteHoliday(String schoolId, int holidayId) => "auth/school/$schoolId/holidays/$holidayId";
+  // Legacy endpoint (kept for reference)
+  static String getAttendanceLegacy(String schoolId, int classId, String date) =>
+      "auth/school/$schoolId/attendance/get?class_id=$classId&date=$date";
+
+  // New unified attendance endpoint
+  static String getAttendance(String schoolId, {int? classId, String? date}) {
+    var url = "auth/school/$schoolId/attendance";
+    final params = <String>[];
+    if (classId != null) params.add('class_id=$classId');
+    if (date != null && date.isNotEmpty) params.add('date=$date');
+    if (params.isNotEmpty) url = '$url?${params.join('&')}';
+    return url;
+  }
 }
 

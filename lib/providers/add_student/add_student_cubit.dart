@@ -1,15 +1,18 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+
 import 'package:idmitra/api_mamanger/config.dart';
 import 'package:idmitra/api_mamanger/secure_storage.dart';
 import 'package:idmitra/local_db/student_local_ds/student_local_ds.dart';
 import 'package:idmitra/models/add_student/StudentFormDataModel.dart';
 import 'package:idmitra/models/students/StudentsListModel.dart' hide ClassOption;
-import 'package:uuid/uuid.dart';
 
 class AddStudentState {
   final bool loading;
@@ -17,6 +20,7 @@ class AddStudentState {
   final String? error;
   final String? message;
   final StudentDetailsData? newStudent;
+
   const AddStudentState({
     this.loading = false,
     this.success = false,
@@ -30,6 +34,21 @@ class AddStudentCubit extends Cubit<AddStudentState> {
   AddStudentCubit() : super(const AddStudentState());
 
   final _localDS = StudentLocalDS();
+
+  Future<String?> _saveFileLocally(File? file, String prefix, String uuid) async {
+    if (file == null) return null;
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final extension = p.extension(file.path);
+      final fileName = '${prefix}_${uuid}_${DateTime.now().millisecondsSinceEpoch}$extension';
+      final savedPath = p.join(directory.path, fileName);
+      await file.copy(savedPath);
+      return savedPath;
+    } catch (e) {
+      debugPrint("Error saving file locally: $e");
+      return file.path; // fallback to original path
+    }
+  }
 
   Future<void> submit({
     required String schoolId,
@@ -141,10 +160,12 @@ class AddStudentCubit extends Cubit<AddStudentState> {
 
         // Handle offline photo if present
         final photoFile = files['student_photo'];
+        final savedPhotoPath = await _saveFileLocally(photoFile, 'student_photo', offlineStudent.uuid ?? 'new');
+
         final studentWithFields = offlineStudent.copyWith(
           offlineFieldsJson: jsonEncode(fields),
           isPhotoPendingSync: photoFile != null,
-          offlinePhotoPath: photoFile?.path,
+          offlinePhotoPath: savedPhotoPath,
         );
 
         await _localDS.insertStudents([studentWithFields]);
@@ -303,6 +324,7 @@ class AddStudentCubit extends Cubit<AddStudentState> {
     );
   }
 
+
   Future<void> updateStudent({
     required String studentUuid,
     required String schoolId,
@@ -416,12 +438,14 @@ class AddStudentCubit extends Cubit<AddStudentState> {
 
         // Handle offline photo if present
         final photoFile = files['student_photo'];
+        final savedPhotoPath = await _saveFileLocally(photoFile, 'student_photo', studentUuid);
+
         final studentToSave = offlineStudent.copyWith(
           uuid: studentUuid,
           isOfflineUpdate: true,
           offlineFieldsJson: jsonEncode(fields),
           isPhotoPendingSync: photoFile != null,
-          offlinePhotoPath: photoFile?.path,
+          offlinePhotoPath: savedPhotoPath,
         );
 
         await _localDS.insertStudents([studentToSave]);
@@ -436,6 +460,163 @@ class AddStudentCubit extends Cubit<AddStudentState> {
       }
     }
   }
+
+  // ─────────────────────────── OFFLINE STUDENT BUILDER ───────────────────────────
+
+  // StudentDetailsData _buildOfflineStudent(
+  //     String schoolId,
+  //     Map<String, dynamic> fields,
+  //     StudentFormDataModel? formDataModel,
+  //     List<String> allConfiguredFieldNames, {
+  //       StudentDetailsData? existingStudent,
+  //     }) {
+  //   final uuid = existingStudent?.uuid ?? 'offline_${const Uuid().v4()}';
+  //   final now = DateTime.now();
+  //
+  //   String? f(List<String> keys) {
+  //     for (final k in keys) {
+  //       final v = fields[k]?.toString();
+  //       if (v != null && v.trim().isNotEmpty) return v;
+  //     }
+  //     return null;
+  //   }
+  //
+  //   final classId = int.tryParse(
+  //           f(['class', 'school_class_id'])?.toString() ?? '') ??
+  //       existingStudent?.schoolClassId;
+  //   final sectionId =
+  //       int.tryParse(f(['class_section', 'school_class_section_id', 'section'])
+  //                   ?.toString() ??
+  //               '') ??
+  //           existingStudent?.schoolClassSectionId;
+  //   final sessionId = int.tryParse(
+  //           f(['session', 'school_session_id'])?.toString() ?? '') ??
+  //       existingStudent?.schoolSessionId;
+  //
+  //   Class? datumClass = existingStudent?.datumClass;
+  //   Section? section = existingStudent?.section;
+  //   Session? session = existingStudent?.session;
+  //
+  //   if (formDataModel != null) {
+  //     if (classId != null) {
+  //       final c = formDataModel.classes.firstWhere(
+  //             (e) => e.id == classId,
+  //         orElse: () => ClassOption(id: -1, name: '', nameWithPrefix: ''),
+  //       );
+  //       if (c.id != -1) {
+  //         datumClass =
+  //             Class(id: c.id, name: c.name, nameWithprefix: c.nameWithPrefix);
+  //
+  //         if (sectionId != null) {
+  //           final s = c.sections.firstWhere(
+  //                 (e) => e.id == sectionId,
+  //             orElse: () => SectionOption(id: -1, name: ''),
+  //           );
+  //           if (s.id != -1) {
+  //             section = Section(id: s.id, name: s.name);
+  //           }
+  //         }
+  //       }
+  //     }
+  //
+  //     if (sessionId != null) {
+  //       final s = formDataModel.sessions.firstWhere(
+  //             (e) => e.value == sessionId,
+  //         orElse: () => SessionOption(value: -1, label: ''),
+  //       );
+  //       if (s.value != -1) {
+  //         session = Session(id: s.value, name: s.label);
+  //       }
+  //     }
+  //   }
+  //
+  //   final missingFields = <String>[];
+  //   final fieldMapping = {
+  //     'student_name': 'student_name',
+  //     'date_of_birth': 'date_of_birth',
+  //     'gender': 'gender',
+  //     'class': 'class',
+  //     'class_section': 'class_section',
+  //     'father_name': 'father_name',
+  //     'mother_name': 'mother_name',
+  //     'student_phone': 'student_phone',
+  //     'address': 'address',
+  //   };
+  //
+  //   for (final apiFieldName in allConfiguredFieldNames) {
+  //     final logicalName = fieldMapping[apiFieldName] ?? apiFieldName;
+  //     final value = fields[logicalName];
+  //     if (value == null || value.toString().trim().isEmpty) {
+  //       missingFields.add(apiFieldName);
+  //     }
+  //   }
+  //
+  //   String? _pick(List<String> keys, String? existingValue) {
+  //     for (final k in keys) {
+  //       final v = fields[k]?.toString();
+  //       if (v != null && v.isNotEmpty) return v;
+  //     }
+  //     return existingValue;
+  //   }
+  //
+  //   return StudentDetailsData(
+  //     id: existingStudent?.id,
+  //     uuid: uuid,
+  //     schoolId: int.tryParse(schoolId) ?? existingStudent?.schoolId,
+  //     name: _pick(['student_name', 'name'], existingStudent?.name),
+  //     email: _pick(['student_email', 'email'], existingStudent?.email?.toString()),
+  //     phone: _pick(['student_phone', 'phone'], existingStudent?.phone?.toString()),
+  //     gender: _pick(['gender'], existingStudent?.gender?.toString()),
+  //     dob: _pick(['date_of_birth', 'dob'], existingStudent?.dob),
+  //     fatherName: _pick(['father_name'], existingStudent?.fatherName),
+  //     fatherPhone: _pick(['father_phone'], existingStudent?.fatherPhone),
+  //     fatherEmail: _pick(['father_email'], existingStudent?.fatherEmail?.toString()),
+  //     fatherWphone: _pick(['father_whatsapp_number', 'father_whatsapp'], existingStudent?.fatherWphone?.toString()),
+  //     motherName: _pick(['mother_name'], existingStudent?.motherName),
+  //     motherPhone: _pick(['mother_phone'], existingStudent?.motherPhone?.toString()),
+  //     motherEmail: _pick(['mother_email'], existingStudent?.motherEmail?.toString()),
+  //     motherWphone: _pick(['mother_whatsapp_number', 'mother_whatsapp'], existingStudent?.motherWphone?.toString()),
+  //     address: _pick(['address'], existingStudent?.address),
+  //     pincode: _pick(['pincode'], existingStudent?.pincode?.toString()),
+  //     whatsappPhone: _pick(['student_whatsapp_number', 'student_whatsapp'], existingStudent?.whatsappPhone?.toString()),
+  //     landLineNo: _pick(['landline_contact_number', 'landline_number'], existingStudent?.landLineNo?.toString()),
+  //     aadharNo: _pick(['aadhar_card_number', 'aadhar_no'], existingStudent?.aadharNo?.toString()),
+  //     uidNo: _pick(['uid_number', 'uid_no'], existingStudent?.uidNo?.toString()),
+  //     studentNicId: _pick(['student_nic_id', 'nic_id'], existingStudent?.studentNicId?.toString()),
+  //     caste: _pick(['caste'], existingStudent?.caste?.toString()),
+  //     religion: _pick(['religion'], existingStudent?.religion?.toString()),
+  //     isRteStudent: _pick(['is_rte_student'], existingStudent?.isRteStudent?.toString()),
+  //     regNo: _pick(['registration_number', 'reg_no'], existingStudent?.regNo?.toString()),
+  //     rollNo: _pick(['roll_number', 'roll_no'], existingStudent?.rollNo?.toString()),
+  //     admissionNo: _pick(['admission_number', 'admission_no'], existingStudent?.admissionNo?.toString()),
+  //     srNo: _pick(['sr_number', 'sr_no'], existingStudent?.srNo),
+  //     rfidNo: _pick(['rfid_number', 'rfid_no'], existingStudent?.rfidNo?.toString()),
+  //     panNo: _pick(['pen_number', 'pan_number', 'pan_no'], existingStudent?.panNo?.toString()),
+  //     bloodGroup: _pick(['blood_group'], existingStudent?.bloodGroup?.toString()),
+  //     transportMode: _pick(['transport_mode'], existingStudent?.transportMode?.toString()),
+  //     schoolClassId: classId,
+  //     schoolClassSectionId: sectionId,
+  //     schoolSessionId: sessionId,
+  //     schoolHouseId: int.tryParse(fields['house']?.toString() ?? '') ??
+  //         existingStudent?.schoolHouseId,
+  //     profilePhotoUrl: existingStudent?.profilePhotoUrl,
+  //     signatureUrl: existingStudent?.signatureUrl,
+  //     fatherPhotoUrl: existingStudent?.fatherPhotoUrl,
+  //     fatherSignatureUrl: existingStudent?.fatherSignatureUrl,
+  //     motherPhotoUrl: existingStudent?.motherPhotoUrl,
+  //     motherSignatureUrl: existingStudent?.motherSignatureUrl,
+  //     status: existingStudent?.status ?? 1,
+  //     isOffline: true,
+  //     createdAt: existingStudent?.createdAt ?? now,
+  //     updatedAt: now,
+  //     missingFields: missingFields,
+  //     datumClass: datumClass,
+  //     section: section,
+  //     session: session,
+  //   );
+  // }
+
+  // ─────────────────────────── BODY BUILDER ───────────────────────────
 
   Map<String, dynamic> _buildBody(String schoolId, Map<String, dynamic> fields) {
     final gender = fields['gender']?.toString().toLowerCase();

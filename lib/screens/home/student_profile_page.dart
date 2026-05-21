@@ -102,14 +102,14 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
     setState(() => _isUploading = true);
     try {
       await context.read<StudentsCubit>().uploadStudentImage(
-            path: path,
-            student: _student,
-          );
+        path: path,
+        student: _student,
+      );
 
       // Refresh local state from Cubit
       final cubit = context.read<StudentsCubit>();
       final updatedStudent = cubit.state.studentsList.firstWhere(
-        (s) => s.uuid == _student.uuid,
+            (s) => s.uuid == _student.uuid,
         orElse: () => _student,
       );
 
@@ -190,10 +190,10 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
   }
 
   Widget _divider() => Container(
-        margin: const EdgeInsets.symmetric(vertical: 10),
-        height: 1,
-        color: Colors.grey.shade300,
-      );
+    margin: const EdgeInsets.symmetric(vertical: 10),
+    height: 1,
+    color: Colors.grey.shade300,
+  );
 
   void _showImagePreview(BuildContext context, String imageUrl) {
     showDialog(
@@ -387,166 +387,166 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                           radius: 40,
                           backgroundColor: AppTheme.btnColor.withOpacity(0.1),
                           backgroundImage: _student.isPhotoPendingSync &&
-                                  _student.offlinePhotoPath != null
+                              _student.offlinePhotoPath != null
                               ? FileImage(File(_student.offlinePhotoPath!))
-                                  as ImageProvider
+                          as ImageProvider
                               : (_student.profilePhotoUrl?.isNotEmpty ?? false)
-                                  ? NetworkImage(_student.profilePhotoUrl!)
-                                  : null,
+                              ? NetworkImage(_student.profilePhotoUrl!)
+                              : null,
                           child: _isUploading
                               ? shimmerBox(width: 80, height: 80, radius: 40)
                               : !hasPhoto
-                                  ? Icon(Icons.person_rounded,
-                                      size: 40, color: AppTheme.btnColor)
-                                  : null,
+                              ? Icon(Icons.person_rounded,
+                              size: 40, color: AppTheme.btnColor)
+                              : null,
                         ),
                       ),
-                            Positioned(
-                              bottom: 2, right: 2,
-                              child: Container(
-                                width: 24, height: 24,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.15),
-                                      blurRadius: 4,
-                                    ),
-                                  ],
-                                ),
-                                child: Icon(
-                                  hasPhoto ? Icons.visibility : Icons.camera_alt,
-                                  size: 13,
-                                  color: AppTheme.btnColor,
-                                ),
-                              ),
-                            ),
-                            // Online dot
-                            Positioned(
-                              top: 2, right: 2,
-                              child: Container(
-                                width: 14, height: 14,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: isActive ? const Color(0xFF4CAF50) : Colors.grey,
-                                  border: Border.all(color: Colors.white, width: 2),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _student.name ?? '-',
-                              style: MyStyles.boldText(size: 18, color: AppTheme.black_Color),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Icon(Icons.school_outlined, size: 13, color: AppTheme.btnColor),
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  child: Text(
-                                    _classSection(),
-                                    style: MyStyles.mediumText(size: 12, color: AppTheme.graySubTitleColor),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (admNo.isNotEmpty) ...[
-                              const SizedBox(height: 3),
-                              Row(
-                                children: [
-                                  Icon(Icons.badge_outlined, size: 13, color: AppTheme.btnColor),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Adm: $admNo',
-                                    style: MyStyles.regularText(size: 11, color: AppTheme.graySubTitleColor),
-                                  ),
-                                ],
-                              ),
-                            ],
-                            if (phone.isNotEmpty) ...[
-                              const SizedBox(height: 3),
-                              Row(
-                                children: [
-                                  Icon(Icons.phone_outlined, size: 13, color: AppTheme.btnColor),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    phone,
-                                    style: MyStyles.regularText(size: 11, color: AppTheme.graySubTitleColor),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      _chipWhite(
-                        label: isActive ? 'Active' : 'Inactive',
-                        bgColor: isActive
-                            ? const Color(0xFF4CAF50).withOpacity(0.12)
-                            : Colors.red.withOpacity(0.12),
-                        textColor: isActive ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
-                        icon: isActive ? Icons.check_circle_outline : Icons.cancel_outlined,
-                      ),
-                      if (_sessionName().isNotEmpty) ...[
-                        const SizedBox(width: 8),
-                        _chipWhite(
-                          label: _sessionName(),
-                          bgColor: AppTheme.btnColor.withOpacity(0.08),
-                          textColor: AppTheme.btnColor,
-                          icon: Icons.calendar_today_outlined,
-                        ),
-                      ],
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: () => _openEdit(context),
+                      Positioned(
+                        bottom: 2, right: 2,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          width: 24, height: 24,
                           decoration: BoxDecoration(
-                            color: AppTheme.btnColor,
-                            borderRadius: BorderRadius.circular(20),
+                            color: Colors.white,
+                            shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: AppTheme.btnColor.withOpacity(0.3),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
+                                color: Colors.black.withOpacity(0.15),
+                                blurRadius: 4,
                               ),
                             ],
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.edit_outlined, size: 14, color: Colors.white),
-                              const SizedBox(width: 5),
-                              Text(
-                                'Edit',
-                                style: MyStyles.mediumText(size: 12, color: Colors.white),
-                              ),
-                            ],
+                          child: Icon(
+                            hasPhoto ? Icons.visibility : Icons.camera_alt,
+                            size: 13,
+                            color: AppTheme.btnColor,
+                          ),
+                        ),
+                      ),
+                      // Online dot
+                      Positioned(
+                        top: 2, right: 2,
+                        child: Container(
+                          width: 14, height: 14,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isActive ? const Color(0xFF4CAF50) : Colors.grey,
+                            border: Border.all(color: Colors.white, width: 2),
                           ),
                         ),
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _student.name ?? '-',
+                        style: MyStyles.boldText(size: 18, color: AppTheme.black_Color),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(Icons.school_outlined, size: 13, color: AppTheme.btnColor),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              _classSection(),
+                              style: MyStyles.mediumText(size: 12, color: AppTheme.graySubTitleColor),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (admNo.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            Icon(Icons.badge_outlined, size: 13, color: AppTheme.btnColor),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Adm: $admNo',
+                              style: MyStyles.regularText(size: 11, color: AppTheme.graySubTitleColor),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (phone.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            Icon(Icons.phone_outlined, size: 13, color: AppTheme.btnColor),
+                            const SizedBox(width: 4),
+                            Text(
+                              phone,
+                              style: MyStyles.regularText(size: 11, color: AppTheme.graySubTitleColor),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                _chipWhite(
+                  label: isActive ? 'Active' : 'Inactive',
+                  bgColor: isActive
+                      ? const Color(0xFF4CAF50).withOpacity(0.12)
+                      : Colors.red.withOpacity(0.12),
+                  textColor: isActive ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
+                  icon: isActive ? Icons.check_circle_outline : Icons.cancel_outlined,
+                ),
+                if (_sessionName().isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  _chipWhite(
+                    label: _sessionName(),
+                    bgColor: AppTheme.btnColor.withOpacity(0.08),
+                    textColor: AppTheme.btnColor,
+                    icon: Icons.calendar_today_outlined,
+                  ),
                 ],
-              ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => _openEdit(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.btnColor,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.btnColor.withOpacity(0.3),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.edit_outlined, size: 14, color: Colors.white),
+                        const SizedBox(width: 5),
+                        Text(
+                          'Edit',
+                          style: MyStyles.mediumText(size: 12, color: Colors.white),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
+      ),
     );
   }
 
@@ -672,61 +672,61 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
   }
 
   Widget _cell(String label, String value) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: MyStyles.regularText(size: 9, color: AppTheme.graySubTitleColor),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            value.isEmpty ? '-' : value,
-            style: MyStyles.boldText(size: 11, color: AppTheme.black_Color),
-          ),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        label,
+        style: MyStyles.regularText(size: 9, color: AppTheme.graySubTitleColor),
+      ),
+      const SizedBox(height: 2),
+      Text(
+        value.isEmpty ? '-' : value,
+        style: MyStyles.boldText(size: 11, color: AppTheme.black_Color),
+      ),
+    ],
+  );
 
   List<_InfoRow> _personalRows() => [
-       // _InfoRow('Login ID', _student.loginId ?? ''),
-        _InfoRow('Email', _student.email?.toString() ?? ''),
-        _InfoRow('WhatsApp', _student.whatsappPhone?.toString() ?? ''),
-        _InfoRow('Gender', _cap(_student.gender?.toString() ?? '')),
-        _InfoRow('Date of Birth', _student.dob ?? ''),
-        _InfoRow('Blood Group', _student.bloodGroup?.toString() ?? ''),
-        _InfoRow('Aadhar No', _student.aadharNo?.toString() ?? ''),
-        _InfoRow('UID No', _student.uidNo?.toString() ?? ''),
-        _InfoRow('NIC ID', _student.studentNicId?.toString() ?? ''),
-        _InfoRow('Caste', _student.caste?.toString() ?? ''),
-        _InfoRow('Religion', _student.religion?.toString() ?? ''),
-        _InfoRow('RTE Student', _student.isRteStudent?.toString() ?? ''),
-        _InfoRow('PEN Number', _student.panNo?.toString() ?? ''),
-      ].where((r) => r.value.isNotEmpty).toList();
+    // _InfoRow('Login ID', _student.loginId ?? ''),
+    _InfoRow('Email', _student.email?.toString() ?? ''),
+    _InfoRow('WhatsApp', _student.whatsappPhone?.toString() ?? ''),
+    _InfoRow('Gender', _cap(_student.gender?.toString() ?? '')),
+    _InfoRow('Date of Birth', _student.dob ?? ''),
+    _InfoRow('Blood Group', _student.bloodGroup?.toString() ?? ''),
+    _InfoRow('Aadhar No', _student.aadharNo?.toString() ?? ''),
+    _InfoRow('UID No', _student.uidNo?.toString() ?? ''),
+    _InfoRow('NIC ID', _student.studentNicId?.toString() ?? ''),
+    _InfoRow('Caste', _student.caste?.toString() ?? ''),
+    _InfoRow('Religion', _student.religion?.toString() ?? ''),
+    _InfoRow('RTE Student', _student.isRteStudent?.toString() ?? ''),
+    _InfoRow('PEN Number', _student.panNo?.toString() ?? ''),
+  ].where((r) => r.value.isNotEmpty).toList();
 
   List<_InfoRow> _academicRows() => [
-        _InfoRow('Roll No', _student.rollNo?.toString() ?? ''),
-        _InfoRow('Reg No', _student.regNo?.toString() ?? ''),
-        _InfoRow('Admission No', _student.admissionNo?.toString() ?? ''),
-        _InfoRow('SR No', _student.srNo ?? ''),
-        _InfoRow('RFID No', _student.rfidNo?.toString() ?? ''),
-        _InfoRow('Transport',
-            _cap((_student.transportMode?.toString() ?? '').replaceAll('_', ' '))),
-      ].where((r) => r.value.isNotEmpty).toList();
+    _InfoRow('Roll No', _student.rollNo?.toString() ?? ''),
+    _InfoRow('Reg No', _student.regNo?.toString() ?? ''),
+    _InfoRow('Admission No', _student.admissionNo?.toString() ?? ''),
+    _InfoRow('SR No', _student.srNo ?? ''),
+    _InfoRow('RFID No', _student.rfidNo?.toString() ?? ''),
+    _InfoRow('Transport',
+        _cap((_student.transportMode?.toString() ?? '').replaceAll('_', ' '))),
+  ].where((r) => r.value.isNotEmpty).toList();
 
   List<_InfoRow> _parentRows() => [
-        _InfoRow('Father Name', _student.fatherName ?? ''),
-        _InfoRow('Father Phone', _student.fatherPhone ?? ''),
-        _InfoRow('Father WhatsApp', _student.fatherWphone?.toString() ?? ''),
-        _InfoRow('Father Email', _student.fatherEmail?.toString() ?? ''),
-        _InfoRow('Mother Name', _student.motherName ?? ''),
-        _InfoRow('Mother Phone', _student.motherPhone?.toString() ?? ''),
-        _InfoRow('Mother WhatsApp', _student.motherWphone?.toString() ?? ''),
-        _InfoRow('Mother Email', _student.motherEmail?.toString() ?? ''),
-      ].where((r) => r.value.isNotEmpty).toList();
+    _InfoRow('Father Name', _student.fatherName ?? ''),
+    _InfoRow('Father Phone', _student.fatherPhone ?? ''),
+    _InfoRow('Father WhatsApp', _student.fatherWphone?.toString() ?? ''),
+    _InfoRow('Father Email', _student.fatherEmail?.toString() ?? ''),
+    _InfoRow('Mother Name', _student.motherName ?? ''),
+    _InfoRow('Mother Phone', _student.motherPhone?.toString() ?? ''),
+    _InfoRow('Mother WhatsApp', _student.motherWphone?.toString() ?? ''),
+    _InfoRow('Mother Email', _student.motherEmail?.toString() ?? ''),
+  ].where((r) => r.value.isNotEmpty).toList();
 
   List<_InfoRow> _addressRows() => [
-        _InfoRow('Address', _student.address ?? ''),
-        _InfoRow('Pincode', _student.pincode?.toString() ?? ''),
-      ].where((r) => r.value.isNotEmpty).toList();
+    _InfoRow('Address', _student.address ?? ''),
+    _InfoRow('Pincode', _student.pincode?.toString() ?? ''),
+  ].where((r) => r.value.isNotEmpty).toList();
 
   String _classSection() {
     final cls = _student.datumClass?.nameWithprefix ?? '';
