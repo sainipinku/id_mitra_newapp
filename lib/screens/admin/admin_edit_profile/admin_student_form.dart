@@ -57,6 +57,7 @@ class _AdminStudentFormState extends State<AdminStudentForm> {
     if (staffState.fields.isEmpty && !staffState.loading) {
       context.read<StaffFormCubit>().loadFields(
         widget.schoolDetailsModel.id?.toString() ?? '',
+        schoolName: widget.schoolDetailsModel.name ?? '',
       );
     }
   }
@@ -1226,6 +1227,9 @@ class _AdminStudentFormState extends State<AdminStudentForm> {
                                   context.read<StaffFormCubit>().loadFields(
                                     widget.schoolDetailsModel.id
                                         ?.toString() ??
+                                        '',
+                                    schoolName: widget
+                                        .schoolDetailsModel.name ??
                                         '',
                                   ),
                               child: const Text('Retry'),

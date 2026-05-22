@@ -55,7 +55,7 @@ class NoInternetService {
 
   void _showBanner({required bool isConnected}) {
     if (!_isInitialized) return;
-    
+
     final context = GlobalContext.navigatorKey.currentContext;
     if (context == null) {
       return;
@@ -156,6 +156,8 @@ class _TopBannerState extends State<_TopBanner>
 
   @override
   Widget build(BuildContext context) {
+    final statusBarHeight = MediaQuery.of(context).padding.top;
+
     return Positioned(
       top: 0,
       left: 0,
@@ -165,33 +167,36 @@ class _TopBannerState extends State<_TopBanner>
         child: Material(
           elevation: 4,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: EdgeInsets.only(
+              top: statusBarHeight,
+              bottom: 0,
+              left: 12,
+              right: 12,
+            ),
             color: widget.isConnected ? Colors.green : Colors.red,
-            child: SafeArea(
-              bottom: false,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    widget.isConnected
-                        ? Icons.wifi
-                        : Icons.wifi_off,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  widget.isConnected
+                      ? Icons.wifi
+                      : Icons.wifi_off,
+                  color: Colors.white,
+                  size: 12,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  widget.isConnected
+                      ? "Back online"
+                      : "No connection",
+                  style: const TextStyle(
                     color: Colors.white,
-                    size: 16,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 11,
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    widget.isConnected
-                        ? "Back online"
-                        : "No connection",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),

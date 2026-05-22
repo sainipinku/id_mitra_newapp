@@ -12,7 +12,7 @@ class ApiManager {
   /// Checks the response status and triggers maintenance screen if server is down.
   /// Returns true if the response is a maintenance/server-error status.
   bool _handleMaintenanceCheck(int statusCode) {
-    if (statusCode == 503 || statusCode == 502 || statusCode == 500) {
+    if (statusCode == 503 || statusCode == 502) {
       MaintenanceService.instance.onServerDown();
       return true;
     }
@@ -279,7 +279,7 @@ Response: ${response.body}
           response.statusCode == 401 ||
           response.statusCode == 403 ||
           response.statusCode == 201 ||
-          response.statusCode == 400 || response.statusCode == 404 || response.statusCode == 422) {
+          response.statusCode == 400 || response.statusCode == 404 || response.statusCode == 422 || response.statusCode == 500) {
         return response;
       } else {
         return null;
@@ -347,7 +347,7 @@ Response: ${response.body}
     }
 
     // request.fields['user_name'] = userName;
-     request.fields['image_type'] = 'photo';
+    request.fields['image_type'] = 'photo';
 
     final token = await UserSecureStorage.fetchToken();
 
@@ -525,16 +525,16 @@ Response: ${response.body}
   }
 
   registerComplainFormRequest(
-    String categoryType,
-    String type,
-    String subject,
-    String description,
-    String blockId,
-    String unitId,
-    String priorityId,
-    List<File> documentFiles,
-    url,
-  ) async {
+      String categoryType,
+      String type,
+      String subject,
+      String description,
+      String blockId,
+      String unitId,
+      String priorityId,
+      List<File> documentFiles,
+      url,
+      ) async {
     final request = http.MultipartRequest('POST', Uri.parse(url));
 
     if (documentFiles.isNotEmpty) {
@@ -573,10 +573,10 @@ Response: ${response.body}
   }
 
   uploadIncomingDocument(
-    String documentId,
-    List<File> documentFiles,
-    url,
-  ) async {
+      String documentId,
+      List<File> documentFiles,
+      url,
+      ) async {
     final request = http.MultipartRequest('POST', Uri.parse(url));
 
     if (documentFiles.isNotEmpty) {

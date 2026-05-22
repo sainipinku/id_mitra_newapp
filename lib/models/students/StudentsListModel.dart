@@ -181,10 +181,17 @@ class StudentDetailsData {
   dynamic motherSignatureUrl;
   bool isOffline;
   bool isExtra;
+  bool isOfflineUpdate;
+  bool isExtraPendingSync;
+  bool isDeletePendingSync;
+  bool isStatusPendingSync;
+  bool isPhotoPendingSync;
+  String? offlinePhotoPath;
   Session? session;
   Class? datumClass;
   dynamic house;
   Section? section;
+  String? offlineFieldsJson;
 
   StudentDetailsData({
     this.id,
@@ -258,14 +265,22 @@ class StudentDetailsData {
     this.motherSignatureUrl,
     this.isOffline = false,
     this.isExtra = false,
+    this.isOfflineUpdate = false,
+    this.isExtraPendingSync = false,
+    this.isDeletePendingSync = false,
+    this.isStatusPendingSync = false,
+    this.isPhotoPendingSync = false,
+    this.offlinePhotoPath,
     this.session,
     this.datumClass,
     this.house,
     this.section,
+    this.offlineFieldsJson,
   });
 
   StudentDetailsData copyWith({
     String? profilePhotoUrl,
+    bool clearProfilePhotoUrl = false,
     String? name,
     String? fatherName,
     String? fatherPhone,
@@ -304,20 +319,25 @@ class StudentDetailsData {
     int? schoolClassSectionId,
     bool? isOffline,
     bool? isExtra,
+    bool? isOfflineUpdate,
+    bool? isExtraPendingSync,
+    bool? isDeletePendingSync,
+    bool? isStatusPendingSync,
+    bool? isPhotoPendingSync,
+    String? offlinePhotoPath,
+    bool clearOfflinePhotoPath = false,
     String? uuid,
     Session? session,
     Class? datumClass,
     Section? section,
+    String? offlineFieldsJson,
   }) {
     return StudentDetailsData(
       uuid: uuid ?? this.uuid,
-      profilePhotoUrl: profilePhotoUrl ?? this.profilePhotoUrl,
       name: name ?? this.name,
       fatherName: fatherName ?? this.fatherName,
       fatherPhone: fatherPhone ?? this.fatherPhone,
-      fatherWphone: fatherWphone ?? this.fatherWphone,
       motherName: motherName ?? this.motherName,
-      motherPhone: motherPhone ?? this.motherPhone,
       dob: dob ?? this.dob,
       address: address ?? this.address,
       pincode: pincode ?? this.pincode,
@@ -345,16 +365,22 @@ class StudentDetailsData {
       fatherEmail: fatherEmail ?? this.fatherEmail,
       motherEmail: motherEmail ?? this.motherEmail,
       motherWphone: motherWphone ?? this.motherWphone,
-      isOffline: isOffline ?? this.isOffline,
-      isExtra: isExtra ?? this.isExtra,
       schoolClassId: schoolClassId ?? this.schoolClassId,
       schoolClassSectionId: schoolClassSectionId ?? this.schoolClassSectionId,
+      isOffline: isOffline ?? this.isOffline,
+      isExtra: isExtra ?? this.isExtra,
+      isOfflineUpdate: isOfflineUpdate ?? this.isOfflineUpdate,
+      isExtraPendingSync: isExtraPendingSync ?? this.isExtraPendingSync,
+      isDeletePendingSync: isDeletePendingSync ?? this.isDeletePendingSync,
+      isStatusPendingSync: isStatusPendingSync ?? this.isStatusPendingSync,
+      isPhotoPendingSync: isPhotoPendingSync ?? this.isPhotoPendingSync,
+      offlinePhotoPath: clearOfflinePhotoPath ? null : (offlinePhotoPath ?? this.offlinePhotoPath),
       session: session ?? this.session,
       datumClass: datumClass ?? this.datumClass,
       section: section ?? this.section,
       // unchanged fields:
       id: id,
-   //   uuid: uuid,
+      //   uuid: uuid,
       schoolId: schoolId,
       photo: photo,
       signature: signature,
@@ -380,6 +406,7 @@ class StudentDetailsData {
       guardianWhatsappPhone: guardianWhatsappPhone,
       guardianPhoto: guardianPhoto,
       guardianSignature: guardianSignature,
+      profilePhotoUrl: clearProfilePhotoUrl ? null : (profilePhotoUrl ?? this.profilePhotoUrl),
       pdfProfilePhotoUrl: pdfProfilePhotoUrl,
       signatureUrl: signatureUrl,
       fatherPhotoUrl: fatherPhotoUrl,
@@ -387,6 +414,7 @@ class StudentDetailsData {
       motherPhotoUrl: motherPhotoUrl,
       motherSignatureUrl: motherSignatureUrl,
       house: house,
+      offlineFieldsJson: offlineFieldsJson ?? this.offlineFieldsJson,
     );
   }
 
@@ -500,6 +528,9 @@ class StudentDetailsData {
         motherSignatureUrl: json["mother_signature_url"],
         isOffline: json["is_offline"] == 1 || json["is_offline"] == true,
         isExtra: json["is_extra"] == 1 || json["is_extra"] == true,
+        isOfflineUpdate: json["is_offline_update"] == 1 || json["is_offline_update"] == true,
+        isPhotoPendingSync: json["is_photo_pending_sync"] == 1 || json["is_photo_pending_sync"] == true,
+        offlinePhotoPath: json["offline_photo_path"],
         session: json["session"] == null ? null : Session.fromJson(json["session"]),
         datumClass: json["class"] == null ? null : Class.fromJson(json["class"]),
         house: json["house"],
@@ -578,6 +609,9 @@ class StudentDetailsData {
     "mother_signature_url": motherSignatureUrl,
     "is_offline": isOffline ? 1 : 0,
     "is_extra": isExtra ? 1 : 0,
+    "is_offline_update": isOfflineUpdate ? 1 : 0,
+    "is_photo_pending_sync": isPhotoPendingSync ? 1 : 0,
+    "offline_photo_path": offlinePhotoPath,
     "session": session?.toJson(),
     "class": datumClass?.toJson(),
     "house": house,
@@ -941,3 +975,4 @@ class EnumValues<T> {
     return reverseMap;
   }
 }
+

@@ -14,10 +14,10 @@ import 'package:idmitra/providers/student_form/student_form_data_cubit.dart';
 import 'package:idmitra/providers/students/students_cubit.dart';
 import 'package:idmitra/providers/students/students_state.dart';
 import 'package:idmitra/screens/admin/admin_add_student_form/admin_add_student_form.dart';
+import 'package:idmitra/screens/home/FilterBottomSheet.dart';
+import 'package:idmitra/screens/home/StudentCard.dart';
+import 'package:idmitra/screens/home/StudentIdCardWidget.dart';
 import 'package:idmitra/models/schools/SchoolListModel.dart';
-import 'package:idmitra/screens/partner/dashboard/home/FilterBottomSheet.dart';
-import 'package:idmitra/screens/partner/dashboard/home/StudentCard.dart';
-import 'package:idmitra/screens/partner/dashboard/home/StudentIdCardWidget.dart';
 
 class EmployeeStudentsScreen extends StatefulWidget {
   final String? schoolId;
@@ -40,7 +40,7 @@ class _EmployeeStudentsScreenState extends State<EmployeeStudentsScreen> {
       _schoolLoaded = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          context.read<StudentsCubit>().fetchStudents(search: '',);
+          context.read<StudentsCubit>().fetchStudents(search: '', schoolId: _schoolId);
         }
       });
     }
@@ -57,7 +57,7 @@ class _EmployeeStudentsScreenState extends State<EmployeeStudentsScreen> {
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          context.read<StudentsCubit>().fetchStudents(search: '',);
+          context.read<StudentsCubit>().fetchStudents(search: '', schoolId: _schoolId);
         }
       });
     }
@@ -103,9 +103,9 @@ class _EmployeeStudentListBodyState extends State<_EmployeeStudentListBody> {
     _scrollCtrl.addListener(() {
       if (_scrollCtrl.position.pixels == _scrollCtrl.position.maxScrollExtent) {
         context.read<StudentsCubit>().fetchStudents(
-
+          isLoadMore: true,
           search: _searchCtrl.text.trim(),
-
+          schoolId: widget.schoolId,
           gender: '',
           classId: '',
         );
@@ -145,7 +145,7 @@ class _EmployeeStudentListBodyState extends State<_EmployeeStudentListBody> {
       } else {
         context.read<StudentsCubit>().fetchStudents(
           search: _searchCtrl.text.trim(),
-
+          schoolId: widget.schoolId,
           gender: '',
           classId: '',
         );
@@ -156,7 +156,7 @@ class _EmployeeStudentListBodyState extends State<_EmployeeStudentListBody> {
   Future<void> _refresh() async {
     context.read<StudentsCubit>().fetchStudents(
       search: _searchCtrl.text.trim(),
-
+      schoolId: widget.schoolId,
       gender: '',
       classId: '',
     );
@@ -203,7 +203,7 @@ class _EmployeeStudentListBodyState extends State<_EmployeeStudentListBody> {
                         _debounce = Timer(const Duration(milliseconds: 300), () {
                           context.read<StudentsCubit>().fetchStudents(
                             search: '',
-
+                            schoolId: widget.schoolId,
                             classId: result['class'] ?? '',
                             gender: result['gender']?.toString().toLowerCase() ?? '',
                           );
@@ -341,6 +341,7 @@ class _EmployeeStudentListBodyState extends State<_EmployeeStudentListBody> {
         _debounce = Timer(const Duration(milliseconds: 500), () {
           context.read<StudentsCubit>().fetchStudents(
             search: value.trim(),
+            schoolId: widget.schoolId,
           );
         });
       },

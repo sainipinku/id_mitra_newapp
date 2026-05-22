@@ -5,16 +5,16 @@ import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/components/my_font_weight.dart';
 import 'package:idmitra/config/ScreenSize.dart';
 import 'package:idmitra/models/schools/SchoolListModel.dart';
+import 'package:idmitra/providers/school/school_cubit.dart';
 import 'package:idmitra/providers/student_form/student_form_cubit.dart';
 import 'package:idmitra/screens/admin/admin_edit_profile/admin_student_form.dart';
 import 'package:idmitra/providers/students/students_cubit.dart';
 import 'package:idmitra/screens/admin/admin_home/admin_students_list.dart';
-import 'package:idmitra/screens/admin/admin_order/admin_orders_page.dart';
 import 'package:idmitra/providers/staff/staff_cubit.dart';
 import 'package:idmitra/utils/navigation_utils.dart';
-import 'package:idmitra/screens/admin/admin_edit_profile/admin_image_setting.dart';
 import 'package:idmitra/screens/admin/admin_edit_profile/admin_edit_profile.dart';
 
+import '../../../edit_profile/image_setting.dart';
 import '../../../staff/staff_student_list/staff_list.dart';
 
 class AdminUserDetailsPage extends StatefulWidget {
@@ -69,11 +69,21 @@ class _AdminUserDetailsContent extends StatelessWidget {
             onSelected: (value) {
               if (value == 'image_settings') {
                 final schoolId = schoolDetailsModel?.id?.toString() ?? '';
+                final schoolIntId = schoolDetailsModel?.id;
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (context) => AdminImageSettingsScreen(schoolId: schoolId)),
-                );
+                      builder: (context) => ImageSettingsScreen(
+                        schoolId: schoolId,
+                        schoolIntId: schoolDetailsModel?.id,
+                      )),
+                ).then((_) {
+                  if (schoolIntId != null) {
+                    try {
+                      context.read<SchoolCubit>().fetchAndApplyImageShape(schoolIntId);
+                    } catch (_) {}
+                  }
+                });
               } else if (value == 'profile_settings') {
                 Navigator.push(
                   context,
@@ -290,7 +300,9 @@ class _AdminUserDetailsContent extends StatelessWidget {
                     page: BlocProvider(
                       create: (_) => StaffCubit(),
                       child: StaffListingPage(
-                          schoolId: schoolDetailsModel?.id.toString() ?? ''),
+                          schoolId: schoolDetailsModel?.id.toString() ?? '',
+                        schoolDetailsModel: schoolDetailsModel,
+                      ),
                     ),
                   ),
                 ),

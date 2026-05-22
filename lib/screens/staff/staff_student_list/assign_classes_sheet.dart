@@ -1,15 +1,12 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:idmitra/Widgets/shimmer_loader.dart';
-import 'package:idmitra/api_mamanger/config.dart';
-import 'package:idmitra/api_mamanger/secure_storage.dart';
 import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/components/my_font_weight.dart';
-import 'package:idmitra/models/add_student/StudentFormDataModel.dart';
+import 'package:idmitra/providers/orders/orders_cubit.dart';
+import 'package:idmitra/providers/orders/orders_state.dart';
 import 'package:idmitra/providers/staff_list/staff_list_cubit.dart';
 import 'package:idmitra/utils/common_widgets/app_button.dart';
-import 'package:idmitra/utils/common_widgets/drop_down/drop_down.dart';
 
 class AssignClassesSheet extends StatefulWidget {
   final String schoolId;
@@ -30,60 +27,17 @@ class AssignClassesSheet extends StatefulWidget {
 }
 
 class _AssignClassesSheetState extends State<AssignClassesSheet> {
-  List<ClassOption> _availableClasses = [];
-  bool _classesLoading = true;
+  bool _adding = false;
   List<Map<String, dynamic>> _assignedClasses = [];
   bool _loadingAssigned = true;
-  bool _adding = false;
 
-  ClassOption? _selectedClass;
-  final Set<int> _selectedSectionIds = {};
+  // Selected item: classId_sectionId key (same as FilterBottomSheet)
+  String? _selectedKey;
 
   @override
   void initState() {
     super.initState();
-    _fetchClasses();
     _fetchAssigned();
-  }
-
-  Future<void> _fetchClasses() async {
-    try {
-      final token = await UserSecureStorage.fetchToken();
-      final url = '${Config.baseUrl}auth/school/${widget.schoolId}/students/form-data';
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
-      );
-      if (response.statusCode == 200) {
-        final json = jsonDecode(response.body);
-        final data = json['data'] ?? json;
-        final List raw = data['classes'] ?? [];
-        final unsorted = raw.map((e) => ClassOption.fromJson(e)).toList();
-        const classOrder = [
-          'nursery', 'nur', 'prep', 'pre',
-          'lkg', 'l.kg', 'ukg', 'u.kg', 'kg',
-          '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12',
-        ];
-        int orderIndex(String name) {
-          final lower = name.toLowerCase().trim();
-          for (int i = 0; i < classOrder.length; i++) {
-            if (lower == classOrder[i] || lower.contains(classOrder[i])) return i;
-          }
-          return classOrder.length;
-        }
-        unsorted.sort((a, b) {
-          final ai = orderIndex(a.name);
-          final bi = orderIndex(b.name);
-          if (ai != bi) return ai.compareTo(bi);
-          return a.nameWithPrefix.toLowerCase().compareTo(b.nameWithPrefix.toLowerCase());
-        });
-        final classes = unsorted;
-        setState(() => _availableClasses = classes);
-      }
-    } catch (e) {
-      debugPrint('fetchClasses error: $e');
-    }
-    setState(() => _classesLoading = false);
   }
 
   Future<void> _fetchAssigned() async {
@@ -99,20 +53,40 @@ class _AssignClassesSheetState extends State<AssignClassesSheet> {
   }
 
   Future<void> _addClass() async {
-    if (_selectedClass == null) return;
+    if (_selectedKey == null) return;
+
+    final parts = _selectedKey!.split('_');
+    final classId = int.tryParse(parts[0]) ?? 0;
+    final sectionId = parts.length > 1 ? int.tryParse(parts[1]) : null;
+    final sectionIds = sectionId != null ? [sectionId] : <int>[];
+
     setState(() => _adding = true);
+
     final success = await widget.cubit.assignClass(
       schoolId: widget.schoolId,
       uuid: widget.staffUuid,
-      classId: _selectedClass!.id,
-      sectionIds: _selectedSectionIds.toList(),
+      classId: classId,
+      sectionIds: sectionIds,
     );
+
     setState(() => _adding = false);
+
     if (success && mounted) {
-      Navigator.pop(context);
+      setState(() => _selectedKey = null);
+      await _fetchAssigned();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Class assigned successfully'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to assign class'), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text('Failed to assign class'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -120,267 +94,355 @@ class _AssignClassesSheetState extends State<AssignClassesSheet> {
   Future<void> _removeClass(Map<String, dynamic> cls) async {
     final assignedUuid = cls['assigned_uuid']?.toString() ?? '';
     if (assignedUuid.isEmpty) return;
+
     final success = await widget.cubit.removeAssignedClass(
       schoolId: widget.schoolId,
       assignedClassUuid: assignedUuid,
     );
+
     if (success) {
       await _fetchAssigned();
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to remove class'), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text('Failed to remove class'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
 
+  static const _classOrder = [
+    'pre nursery', 'prenursery', 'pre-nursery',
+    'nursery',
+    'prep', 'pre prep', 'preprep', 'pre-prep',
+    'lkg', 'l.k.g', 'lower kg', 'lower kindergarten', 'l kg',
+    'ukg', 'u.k.g', 'upper kg', 'upper kindergarten', 'u kg',
+    'kg', 'k.g', 'kindergarten',
+    '1', 'i', 'class 1', 'grade 1',
+    '2', 'ii', 'class 2', 'grade 2',
+    '3', 'iii', 'class 3', 'grade 3',
+    '4', 'iv', 'class 4', 'grade 4',
+    '5', 'v', 'class 5', 'grade 5',
+    '6', 'vi', 'class 6', 'grade 6',
+    '7', 'vii', 'class 7', 'grade 7',
+    '8', 'viii', 'class 8', 'grade 8',
+    '9', 'ix', 'class 9', 'grade 9',
+    '10', 'x', 'class 10', 'grade 10',
+    '11', 'xi', 'class 11', 'grade 11',
+    '12', 'xii', 'class 12', 'grade 12',
+  ];
+
+  static int _sortIndex(String name) {
+    final lower = name.trim().toLowerCase();
+    for (int i = 0; i < _classOrder.length; i++) {
+      if (lower == _classOrder[i]) return i;
+    }
+    for (int i = 0; i < _classOrder.length; i++) {
+      if (lower.startsWith(_classOrder[i])) return i;
+    }
+    return 999;
+  }
+
+  List<OrderClass> _sorted(List<OrderClass> classes) {
+    final list = [...classes];
+    list.sort((a, b) {
+      final aName = a.nameWithprefix ?? a.name;
+      final bName = b.nameWithprefix ?? b.name;
+      final ai = _sortIndex(aName);
+      final bi = _sortIndex(bName);
+      if (ai != bi) return ai.compareTo(bi);
+      return aName.toLowerCase().compareTo(bName.toLowerCase());
+    });
+    return list;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: EdgeInsets.only(
-        left: 20, right: 20, top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return BlocBuilder<OrdersCubit, OrdersState>(
+      builder: (context, orderState) {
+        final classes = _sorted(orderState.availableClasses);
+
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                // Header
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Assign Classes',
-                        style: MyStyles.boldText(size: 16, color: AppTheme.black_Color)),
-                    Text(widget.staffName,
-                        style: MyStyles.regularText(
-                            size: 13, color: AppTheme.graySubTitleColor)),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Assign Classes',
+                            style: MyStyles.boldText(
+                                size: 16, color: AppTheme.black_Color)),
+                        Text(widget.staffName,
+                            style: MyStyles.regularText(
+                                size: 13,
+                                color: AppTheme.graySubTitleColor)),
+                      ],
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
                   ],
                 ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Select Class',
-                          style: MyStyles.mediumText(
-                              size: 13, color: AppTheme.black_Color)),
-                      const SizedBox(height: 6),
-                      _classesLoading
-                          ? shimmerBox(height: 48, radius: 8)
-                          : Dropdown<ClassOption>(
-                              value: _selectedClass,
-                              items: _availableClasses,
-                              hintText: '-Select-',
-                              showClearButton: false,
-                              displayText: (_, c) => c.nameWithPrefix,
-                              onChange: (v) => setState(() {
-                                _selectedClass = v;
-                                _selectedSectionIds.clear();
-                              }),
+
+                const Divider(),
+                const SizedBox(height: 8),
+
+                Text('Select Class',
+                    style: MyStyles.mediumText(
+                        size: 13, color: AppTheme.graySubTitleColor)),
+                const SizedBox(height: 8),
+
+                // Class list — same style as FilterBottomSheet
+                orderState.classesLoading
+                    ? Column(
+                        children: List.generate(
+                          5,
+                          (i) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: shimmerBox(height: 44, radius: 8),
+                          ),
+                        ),
+                      )
+                    : classes.isEmpty
+                        ? Text('No classes available',
+                            style: MyStyles.regularText(
+                                size: 13,
+                                color: AppTheme.graySubTitleColor))
+                        : ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxHeight:
+                                  MediaQuery.of(context).size.height * 0.30,
                             ),
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              itemCount: classes.length,
+                              separatorBuilder: (_, __) =>
+                                  Divider(height: 1, color: AppTheme.LineColor),
+                              itemBuilder: (_, index) {
+                                final cls = classes[index];
+                                final clsName =
+                                    cls.nameWithprefix ?? cls.name;
+                                final displayName =
+                                    cls.sectionName.isNotEmpty
+                                        ? '$clsName (${cls.sectionName})'
+                                        : clsName;
+                                final clsKey =
+                                    '${cls.classId}_${cls.sectionId ?? ''}';
+                                final isSelected = _selectedKey == clsKey;
+
+                                return InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedKey =
+                                          isSelected ? null : clsKey;
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 4, vertical: 12),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            displayName,
+                                            style: MyStyles.regularText(
+                                              size: 14,
+                                              color: isSelected
+                                                  ? AppTheme.btnColor
+                                                  : AppTheme.black_Color,
+                                            ),
+                                          ),
+                                        ),
+                                        Icon(
+                                          isSelected
+                                              ? Icons.radio_button_checked
+                                              : Icons.radio_button_off,
+                                          size: 20,
+                                          color: isSelected
+                                              ? AppTheme.btnColor
+                                              : AppTheme.graySubTitleColor,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+
+                const SizedBox(height: 16),
+
+                // Add button
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppButton(
+                        title: 'Assign',
+                        height: 48,
+                        isLoading: _adding,
+                        color: _selectedKey != null
+                            ? AppTheme.btnColor
+                            : AppTheme.graySubTitleColor,
+                        onTap: _selectedKey != null ? _addClass : () {},
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 20),
+
+                // Assigned classes table
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: AppTheme.backBtnBgColor),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.appBackgroundColor,
+                          borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(10)),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                                child: Text('Class',
+                                    style: MyStyles.boldText(
+                                        size: 13,
+                                        color: AppTheme.black_Color))),
+                            Expanded(
+                                child: Text('Sections',
+                                    style: MyStyles.boldText(
+                                        size: 13,
+                                        color: AppTheme.black_Color))),
+                            Text('Action',
+                                style: MyStyles.boldText(
+                                    size: 13, color: AppTheme.black_Color)),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      if (_loadingAssigned)
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            children: List.generate(
+                              3,
+                              (_) => Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                        child: shimmerBox(
+                                            height: 14, radius: 6)),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                        child: shimmerBox(
+                                            height: 14, radius: 6)),
+                                    const SizedBox(width: 12),
+                                    shimmerBox(
+                                        width: 24, height: 24, radius: 12),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      else if (_assignedClasses.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Center(
+                            child: Text(
+                              'No assigned classes found.',
+                              style: MyStyles.regularText(
+                                  size: 13, color: Colors.red.shade300),
+                            ),
+                          ),
+                        )
+                      else
+                        ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _assignedClasses.length,
+                          separatorBuilder: (_, __) => Divider(
+                              height: 1, color: AppTheme.backBtnBgColor),
+                          itemBuilder: (_, i) {
+                            final cls = _assignedClasses[i];
+                            final className =
+                                cls['name']?.toString() ?? '';
+                            final sections =
+                                cls['sections'] as List? ?? [];
+                            final sectionNames = sections
+                                .map((s) => s is Map
+                                    ? (s['name'] ?? '').toString()
+                                    : s.toString())
+                                .where((s) => s.isNotEmpty)
+                                .join(', ');
+
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 10),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(className,
+                                        style: MyStyles.regularText(
+                                            size: 14,
+                                            color: AppTheme.black_Color)),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                        sectionNames.isEmpty
+                                            ? '-'
+                                            : sectionNames,
+                                        style: MyStyles.regularText(
+                                            size: 13,
+                                            color:
+                                                AppTheme.graySubTitleColor)),
+                                  ),
+                                  GestureDetector(
+                                    onTap: () => _removeClass(cls),
+                                    child: const Icon(Icons.delete_outline,
+                                        color: Colors.red, size: 20),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  width: 80,
-                  child: AppButton(
-                    title: 'Add',
-                    height: 48,
-                    isLoading: _adding,
-                    color: AppTheme.btnColor,
-                    onTap: _addClass,
-                  ),
-                ),
               ],
             ),
-
-            if (_selectedClass != null &&
-                _selectedClass!.sections.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              Text('Select Sections',
-                  style: MyStyles.mediumText(
-                      size: 13, color: AppTheme.black_Color)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _selectedClass!.sections.map((sec) {
-                  final selected = _selectedSectionIds.contains(sec.id);
-                  return GestureDetector(
-                    onTap: () => setState(() => selected
-                        ? _selectedSectionIds.remove(sec.id)
-                        : _selectedSectionIds.add(sec.id)),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: selected ? AppTheme.btnColor : Colors.white,
-                        border: Border.all(
-                          color: selected
-                              ? AppTheme.btnColor
-                              : AppTheme.backBtnBgColor,
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        sec.name,
-                        style: MyStyles.regularText(
-                          size: 13,
-                          color: selected
-                              ? Colors.white
-                              : AppTheme.black_Color,
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ],
-
-            const SizedBox(height: 20),
-
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: AppTheme.backBtnBgColor),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Column(
-                children: [
-                  // Table header
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppTheme.appBackgroundColor,
-                      borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(10)),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                            child: Text('Class',
-                                style: MyStyles.boldText(
-                                    size: 13,
-                                    color: AppTheme.black_Color))),
-                        Expanded(
-                            child: Text('Sections',
-                                style: MyStyles.boldText(
-                                    size: 13,
-                                    color: AppTheme.black_Color))),
-                        Text('Action',
-                            style: MyStyles.boldText(
-                                size: 13, color: AppTheme.black_Color)),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-
-                  // Table body
-                  if (_loadingAssigned)
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: List.generate(
-                          3,
-                          (_) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                    child: shimmerBox(height: 14, radius: 6)),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                    child: shimmerBox(height: 14, radius: 6)),
-                                const SizedBox(width: 12),
-                                shimmerBox(
-                                    width: 24, height: 24, radius: 12),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    )
-                  else if (_assignedClasses.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Center(
-                        child: Text(
-                          'No assigned classes found.',
-                          style: MyStyles.regularText(
-                              size: 13, color: Colors.red.shade300),
-                        ),
-                      ),
-                    )
-                  else
-                    ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _assignedClasses.length,
-                      separatorBuilder: (_, __) =>
-                          Divider(height: 1, color: AppTheme.backBtnBgColor),
-                      itemBuilder: (_, i) {
-                        final cls = _assignedClasses[i];
-                        final className = cls['name']?.toString() ?? '';
-                        final sections = cls['sections'] as List? ?? [];
-                        final sectionNames = sections
-                            .map((s) => s is Map
-                                ? (s['name'] ?? '').toString()
-                                : s.toString())
-                            .where((s) => s.isNotEmpty)
-                            .join(', ');
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 10),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(className,
-                                    style: MyStyles.regularText(
-                                        size: 14,
-                                        color: AppTheme.black_Color)),
-                              ),
-                              Expanded(
-                                child: Text(
-                                  sectionNames.isEmpty ? '-' : sectionNames,
-                                  style: MyStyles.regularText(
-                                      size: 13,
-                                      color: AppTheme.graySubTitleColor),
-                                ),
-                              ),
-                              GestureDetector(
-                                onTap: () => _removeClass(cls),
-                                child: const Icon(Icons.delete_outline,
-                                    color: Colors.red, size: 20),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

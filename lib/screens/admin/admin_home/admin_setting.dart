@@ -41,7 +41,7 @@ class _AdminSettingState extends State<AdminSetting> {
               ),
           ),
           BlocProvider(
-            create: (_) => StaffFormCubit()..loadFields(schoolId),
+            create: (_) => StaffFormCubit()..loadFields(schoolId, schoolName: schoolName),
           ),
         ],
         child: StudentForm(

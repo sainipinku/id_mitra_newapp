@@ -1,41 +1,146 @@
 import 'dart:convert';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:idmitra/api_mamanger/UserLocal.dart';
 import 'package:idmitra/api_mamanger/api_manager.dart';
 import 'package:idmitra/api_mamanger/config.dart';
+import 'package:idmitra/db_helper.dart';
+import 'package:idmitra/local_db/student_local_ds/student_local_ds.dart';
 import 'package:idmitra/models/home/SchoolDashboardModel.dart';
-
+import 'package:sqflite/sqflite.dart';
 part 'admin_dashboard_state.dart';
+
+const _kAdminDashboardKey = 'admin_dashboard';
 
 class AdminDashboardCubit extends Cubit<AdminDashboardState> {
   AdminDashboardCubit() : super(AdminDashboardState());
 
   final ApiManager _api = ApiManager();
+  final _studentLocalDS = StudentLocalDS();
+
+  Future<void> _saveToLocal(String key, Map<String, dynamic> json) async {
+    try {
+      final db = await DBHelper.db;
+      await db.insert(
+        'home_cache',
+        {
+          'key': key,
+          'json_data': jsonEncode(json),
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      print('AdminDashboardCubit local save error: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>?> _loadFromLocal(String key) async {
+    try {
+      final db = await DBHelper.db;
+      final rows = await db.query(
+        'home_cache',
+        where: 'key = ?',
+        whereArgs: [key],
+        limit: 1,
+      );
+      if (rows.isEmpty) return null;
+      return jsonDecode(rows.first['json_data'] as String) as Map<String, dynamic>;
+    } catch (e) {
+      print('AdminDashboardCubit local load error: $e');
+      return null;
+    }
+  }
+
+  Future<SchoolDashboardModel> _injectLocalStudentCount(SchoolDashboardModel model) async {
+    try {
+      final schoolData = await UserLocal.getSchool();
+      final schoolId = schoolData['schoolId'];
+      
+      final localCount = await _studentLocalDS.getCount(schoolId: schoolId ?? '');
+      if (localCount > 0) {
+        final summary = model.data.summary;
+        final updatedSummary = DashSummary(
+          orders: summary.orders,
+          students: localCount,
+          staff: summary.staff,
+          classes: summary.classes,
+          checklists: summary.checklists,
+        );
+        final updatedData = SchoolDashboardData(
+          summary: updatedSummary,
+          attendance: model.data.attendance,
+          school: model.data.school,
+          currentSession: model.data.currentSession,
+          recentActivity: model.data.recentActivity,
+          user: model.data.user,
+        );
+        return SchoolDashboardModel(
+          success: model.success,
+          message: model.message,
+          data: updatedData,
+        );
+      }
+    } catch (e) {
+      print('AdminDashboardCubit student count injection error: $e');
+    }
+    return model;
+  }
 
   Future<void> loadDashboard() async {
     emit(state.copyWith(loading: true, error: null));
+
+    // Load from local first
+    final localData = await _loadFromLocal(_kAdminDashboardKey);
+    if (localData != null) {
+      try {
+        var model = SchoolDashboardModel.fromJson(localData);
+        // Inject local student count
+        model = await _injectLocalStudentCount(model);
+        
+        emit(state.copyWith(loading: false, dashboard: model));
+        // Sync from API in background if we have local data
+        _syncFromApi();
+        return;
+      } catch (e) {
+        print('Error parsing local admin dashboard: $e');
+      }
+    }
+
+    await _syncFromApi(emitLoading: true);
+  }
+
+  Future<void> _syncFromApi({bool emitLoading = false}) async {
+    if (emitLoading) emit(state.copyWith(loading: true));
     try {
       final response = await _api.getRequest(
         Config.baseUrl + Routes.getSchoolDashboard(),
       );
       if (response == null) {
-        emit(state.copyWith(loading: false, error: 'No response from server'));
+        if (emitLoading) emit(state.copyWith(loading: false, error: 'No response from server'));
         return;
       }
       if (response.statusCode == 200) {
         final body = response.body as String;
-        print('Dashboard API Response: $body');
         final json = jsonDecode(body);
-        final model = SchoolDashboardModel.fromJson(json);
-        print('Parsed students: ${model.data.summary.students}');
-        emit(state.copyWith(loading: false, dashboard: model));
+        var model = SchoolDashboardModel.fromJson(json);
+        
+        // Save to local
+        await _saveToLocal(_kAdminDashboardKey, json);
+
+        // Inject local student count before emitting
+        model = await _injectLocalStudentCount(model);
+        
+        emit(state.copyWith(loading: false, dashboard: model, error: null));
       } else {
-        emit(state.copyWith(
-          loading: false,
-          error: 'Error ${response.statusCode}',
-        ));
+        if (emitLoading) {
+          emit(state.copyWith(
+            loading: false,
+            error: 'Error ${response.statusCode}',
+          ));
+        }
       }
     } catch (e) {
-      emit(state.copyWith(loading: false, error: e.toString()));
+      if (emitLoading) emit(state.copyWith(loading: false, error: e.toString()));
     }
   }
 }
