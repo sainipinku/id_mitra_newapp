@@ -7,7 +7,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:idmitra/Widgets/AppSize.dart';
 import 'package:idmitra/bloc_provider/bloc_provider.dart';
 import 'package:idmitra/components/app_theme.dart';
-
+import 'package:idmitra/screens/dashboard/users/user_details_page.dart';
 import 'package:idmitra/screens/splash/splash.dart';
 import 'package:idmitra/utils/GlobalContext.dart';
 import 'package:idmitra/api_mamanger/config.dart';
@@ -19,8 +19,6 @@ void main() async{
   WidgetsFlutterBinding.ensureInitialized();
 
   MaintenanceService.instance.init(Config.proBaseUrl);
-
-  await MaintenanceService.instance.checkOnStartup();
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -45,9 +43,9 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
-    // Initialize NoInternetService after first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       NoInternetService.instance.init();
+      MaintenanceService.instance.checkOnStartup();
     });
   }
 

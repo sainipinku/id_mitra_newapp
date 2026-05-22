@@ -8,7 +8,7 @@ import 'package:idmitra/components/text_filed.dart';
 import 'package:idmitra/providers/login_auth/login_cubit.dart';
 import 'package:idmitra/screens/auth/ConfirmPasswordTextField.dart';
 import 'package:idmitra/screens/auth/PasswordTextField.dart';
-import 'package:idmitra/screens/partner/dashboard/dashboard.dart';
+import 'package:idmitra/screens/dashboard/dashboard.dart';
 import 'package:idmitra/utils/common_widgets/app_button.dart';
 import 'package:idmitra/utils/navigation_utils.dart';
 import 'package:page_transition/page_transition.dart';

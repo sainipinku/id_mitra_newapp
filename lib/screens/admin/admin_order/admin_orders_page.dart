@@ -802,7 +802,7 @@ class _AdminOrderCardState extends State<_AdminOrderCard> {
                       ),
                       const SizedBox(width: 3),
                       Text(
-                        widget.order.orderedAt,
+                        widget.order.formattedOrderedAt,
                         style: MyStyles.regularText(
                           size: 11,
                           color: AppTheme.graySubTitleColor,

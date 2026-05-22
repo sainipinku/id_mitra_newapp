@@ -1,9 +1,15 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
 import 'package:idmitra/api_mamanger/config.dart';
 import 'package:idmitra/api_mamanger/secure_storage.dart';
+import 'package:idmitra/local_db/staff_local_ds/staff_local_ds.dart';
 import 'package:idmitra/models/staff/StaffDetailModel.dart';
+import 'package:idmitra/models/staff/StaffListModel.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:uuid/uuid.dart';
 
 class AddStaffState {
   final bool loading;
@@ -11,6 +17,7 @@ class AddStaffState {
   final String? error;
   final String? message;
   final StaffDetailModel? updatedStaff;
+  final StaffListModel? newStaff;
 
   const AddStaffState({
     this.loading = false,
@@ -18,11 +25,28 @@ class AddStaffState {
     this.error,
     this.message,
     this.updatedStaff,
+    this.newStaff,
   });
 }
 
 class AddStaffCubit extends Cubit<AddStaffState> {
   AddStaffCubit() : super(const AddStaffState());
+
+  final _localDS = StaffLocalDS();
+
+  Future<bool> _hasInternet() async {
+    try {
+      final connectivity = await Connectivity().checkConnectivity();
+      if (connectivity.contains(ConnectivityResult.none) &&
+          connectivity.length == 1) {
+        return false;
+      }
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
 
   Future<void> submit({
     required String schoolId,
@@ -31,17 +55,59 @@ class AddStaffCubit extends Cubit<AddStaffState> {
   }) async {
     emit(const AddStaffState(loading: true));
     try {
+      final body = _buildBody(schoolId, fields, isAdd: true);
+
+      if (!await _hasInternet()) {
+        debugPrint("Saving new staff offline...");
+        final uuid = 'offline_${const Uuid().v4()}';
+
+        // Prepare full fields including emergency contacts for offline sync
+        final offlineFields = Map<String, dynamic>.from(body);
+        for (int i = 0; i < emergencyContacts.length; i++) {
+          emergencyContacts[i].forEach((k, v) {
+            if (v.isNotEmpty) offlineFields['emergency_contacts[$i][$k]'] = v;
+          });
+        }
+
+        final offlineStaff = StaffListModel(
+          id: 0,
+          uuid: uuid,
+          name: fields['name']?.toString() ?? '',
+          designation: fields['designation']?.toString() ?? '',
+          department: fields['department']?.toString() ?? '',
+          email: fields['email']?.toString() ?? '',
+          phone: fields['phone']?.toString() ?? '',
+          roleName: '', // Will be updated on sync
+          status: 1,
+          assignedClasses: [],
+          isOffline: true,
+          schoolId: int.tryParse(schoolId),
+          offlineFieldsJson: jsonEncode(offlineFields),
+        );
+
+        await _localDS.insertStaff([offlineStaff]);
+
+        emit(AddStaffState(
+          success: true,
+          message: 'Staff saved offline. It will be synced when you are back online.',
+          newStaff: offlineStaff,
+        ));
+        return;
+      }
+
       final token = await UserSecureStorage.fetchToken();
+      if (token == null) {
+        emit(const AddStaffState(error: 'Session expired. Please login again.'));
+        return;
+      }
       final role = await UserSecureStorage.fetchRole();
       final isPartner = role == 'partner';
 
       final url = Config.url(Routes.addStaff(schoolId, isPartner: isPartner));
+
       final request = http.MultipartRequest('POST', Uri.parse(url));
       request.headers['Authorization'] = 'Bearer $token';
       request.headers['Accept'] = 'application/json';
-
-      final body = _buildBody(schoolId, fields);
-      print('SUBMIT BODY: $body');
 
       body.forEach((k, v) {
         if (v != null && v.toString().isNotEmpty) {
@@ -57,7 +123,6 @@ class AddStaffCubit extends Cubit<AddStaffState> {
 
       final streamed = await request.send();
       final response = await http.Response.fromStream(streamed);
-      print('ADD STAFF RESPONSE: ${response.statusCode} ${response.body}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final json = jsonDecode(response.body);
@@ -66,10 +131,10 @@ class AddStaffCubit extends Cubit<AddStaffState> {
           message: json['message'] ?? 'Staff added successfully',
         ));
       } else {
-        emit(AddStaffState(error: _parseError(response)));
+        final errorMsg = _parseError(response);
+        emit(AddStaffState(error: errorMsg));
       }
     } catch (e) {
-      print('ADD STAFF EXCEPTION: $e');
       emit(AddStaffState(error: 'Error: ${e.toString()}'));
     }
   }
@@ -82,236 +147,104 @@ class AddStaffCubit extends Cubit<AddStaffState> {
     String? roleId,
   }) async {
     emit(const AddStaffState(loading: true));
-
     try {
-      final token = await UserSecureStorage.fetchToken();
-      if (token == null) {
-        emit(const AddStaffState(error: 'Authentication token not found'));
-        return;
+      final body = _buildBody(schoolId, fields);
+      if (roleId != null && roleId.isNotEmpty) {
+        final roleInt = int.tryParse(roleId);
+        body['role'] = roleInt ?? roleId;
       }
 
-      final url = Config.url(Routes.updateStaff(schoolId, uuid));
-      print('Update staff URL: $url');
+      if (!await _hasInternet()) {
+        debugPrint("Updating staff offline: $uuid");
 
-      final body = <String, dynamic>{};
-
-      _addIfNotEmpty(body, 'name', fields['name']);
-      _addIfNotEmpty(body, 'email', fields['email']);
-      _addIfNotEmpty(body, 'phone', fields['phone']);
-      _addIfNotEmpty(body, 'designation', fields['designation']);
-      _addIfNotEmpty(body, 'department', fields['department']);
-      _addIfNotEmpty(body, 'login_id', fields['login_id']);
-      _addIfNotEmpty(body, 'whatsapp_phone', fields['whatsapp'] ?? fields['whatsapp_phone']);
-      _addIfNotEmpty(body, 'father_name', fields['father_name']);
-      _addIfNotEmpty(body, 'mother_name', fields['mother_name']);
-      _addIfNotEmpty(body, 'husband_name', fields['husband_name']);
-      _addIfNotEmpty(body, 'dob', _convertDate(fields['date_of_birth']));
-      _addIfNotEmpty(body, 'date_of_joining', _convertDate(fields['date_of_joining']));
-      _addIfNotEmpty(body, 'address', fields['address']);
-      _addIfNotEmpty(body, 'pincode', fields['pincode']);
-      _addIfNotEmpty(body, 'employee_id', fields['employee_id']);
-      _addIfNotEmpty(body, 'national_code', fields['national_code']);
-
-      // ==================== ROLE + PERMISSIONS FIX ====================
-      final roleRaw = roleId ?? fields['role'];
-
-      if (roleRaw != null && roleRaw.toString().trim().isNotEmpty) {
-        String roleStr = roleRaw.toString().trim();
-        if (roleStr.startsWith('[') && roleStr.endsWith(']')) {
-          roleStr = roleStr.replaceAll('[', '').replaceAll(']', '').trim();
+        // Prepare full fields for offline sync
+        final offlineFields = Map<String, dynamic>.from(body);
+        for (int i = 0; i < emergencyContacts.length; i++) {
+          emergencyContacts[i].forEach((k, v) {
+            if (v.isNotEmpty) offlineFields['emergency_contacts[$i][$k]'] = v;
+          });
         }
 
-        final roleInt = int.tryParse(roleStr);
-        if (roleInt != null) {
-          body['role'] = [roleInt];           // Role as array
-          body['roles'] = [roleInt];          // ← Try sending 'roles' also (plural)
-        }
-      }
-      // =============================================================
+        // We need to fetch the current staff record to update it
+        final existingStaff = await _localDS.getStaffByUuid(uuid) ??
+            StaffListModel(
+              id: 0,
+              uuid: uuid,
+              name: fields['name']?.toString() ?? '',
+              designation: fields['designation']?.toString() ?? '',
+              department: fields['department']?.toString() ?? '',
+              email: fields['email']?.toString() ?? '',
+              phone: fields['phone']?.toString() ?? '',
+              roleName: '',
+              status: 1,
+              assignedClasses: [],
+            );
 
-      // Gender
-      final gender = fields['gender']?.toString().trim() ?? '';
-      if (gender.isNotEmpty && gender.toLowerCase() != '-select gender-') {
-        body['gender'] = gender.toLowerCase();
-      }
+        final updatedStaff = existingStaff.copyWith(
+          name: fields['name']?.toString() ?? existingStaff.name,
+          designation: fields['designation']?.toString() ?? existingStaff.designation,
+          department: fields['department']?.toString() ?? existingStaff.department,
+          email: fields['email']?.toString() ?? existingStaff.email,
+          phone: fields['phone']?.toString() ?? existingStaff.phone,
+          isOfflineUpdate: true,
+          offlineFieldsJson: jsonEncode(offlineFields),
+        );
 
-      // Blood Group
-      final bg = fields['blood_group']?.toString().trim() ?? '';
-      if (bg.isNotEmpty && bg != 'Select Blood Group') {
-        body['blood_group'] = bg;
-      }
-
-      // Emergency Contacts
-      final validContacts = emergencyContacts
-          .where((e) =>
-      (e['name'] ?? '').trim().isNotEmpty ||
-          (e['phone'] ?? '').trim().isNotEmpty)
-          .map((e) => {
-        'name': (e['name'] ?? '').trim(),
-        'phone': (e['phone'] ?? '').trim(),
-        'relation': (e['relation'] ?? '').trim(),
-      })
-          .toList();
-
-      body['emergency_contacts'] = validContacts.isNotEmpty ? validContacts : [];
-
-      print('FINAL UPDATE BODY: $body');
-
-      final response = await http.put(
-        Uri.parse(url),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(body),
-      );
-
-      print('UPDATE RESPONSE: ${response.statusCode}');
-      print('Response Body: ${response.body}');
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final json = jsonDecode(response.body) as Map<String, dynamic>;
-        final staffData = json['data'] as Map<String, dynamic>?;
+        await _localDS.insertStaff([updatedStaff]);
 
         emit(AddStaffState(
           success: true,
-          message: json['message']?.toString() ?? 'Staff updated successfully',
+          message: 'Staff updates saved offline.',
+          newStaff: updatedStaff,
+        ));
+        return;
+      }
+
+      final token = await UserSecureStorage.fetchToken();
+      if (token == null) {
+        emit(const AddStaffState(error: 'Session expired. Please login again.'));
+        return;
+      }
+      final role = await UserSecureStorage.fetchRole();
+      final isPartner = role == 'partner';
+      final url = Config.url(Routes.updateStaff(schoolId, uuid, isPartner: isPartner));
+
+      final request = http.MultipartRequest('POST', Uri.parse(url));
+      request.headers['Authorization'] = 'Bearer $token';
+      request.headers['Accept'] = 'application/json';
+      request.fields['_method'] = 'PUT';
+
+      body.forEach((k, v) {
+        if (v != null && v.toString().isNotEmpty) {
+          request.fields[k] = v.toString();
+        }
+      });
+
+      for (int i = 0; i < emergencyContacts.length; i++) {
+        emergencyContacts[i].forEach((k, v) {
+          if (v.isNotEmpty) request.fields['emergency_contacts[$i][$k]'] = v;
+        });
+      }
+
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+      print('UPDATE RESPONSE STATUS: ${response.statusCode}');
+      print('UPDATE RESPONSE BODY: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final json = jsonDecode(response.body);
+        final staffData = json['data'] as Map<String, dynamic>?;
+        emit(AddStaffState(
+          success: true,
+          message: json['message'] ?? 'Staff updated successfully',
           updatedStaff: staffData != null ? StaffDetailModel.fromJson(staffData) : null,
         ));
       } else {
         emit(AddStaffState(error: _parseError(response)));
       }
-    } catch (e, stack) {
-      print('UPDATE STAFF EXCEPTION: $e');
-      print('Stack Trace: $stack');
+    } catch (e) {
       emit(AddStaffState(error: e.toString()));
     }
-  }
-
-  // Future<void> update({
-  //   required String schoolId,
-  //   required String uuid,
-  //   required Map<String, dynamic> fields,
-  //   required List<Map<String, String>> emergencyContacts,
-  //   String? roleId,
-  // }) async {
-  //   emit(const AddStaffState(loading: true));
-  //   try {
-  //     final token = await UserSecureStorage.fetchToken();
-  //
-  //     final url = Config.url(Routes.updateStaff(schoolId, uuid));
-  //     print('UPDATE STAFF URL: $url');
-  //
-  //     final body = <String, dynamic>{};
-  //
-  //     _addIfNotEmpty(body, 'name', fields['name']);
-  //     _addIfNotEmpty(body, 'email', fields['email']);
-  //     _addIfNotEmpty(body, 'phone', fields['phone']);
-  //     _addIfNotEmpty(body, 'designation', fields['designation']);
-  //     _addIfNotEmpty(body, 'department', fields['department']);
-  //     _addIfNotEmpty(body, 'login_id', fields['login_id']);
-  //     _addIfNotEmpty(body, 'whatsapp_phone',
-  //         fields['whatsapp'] ?? fields['whatsapp_phone']);
-  //     _addIfNotEmpty(body, 'father_name', fields['father_name']);
-  //     _addIfNotEmpty(body, 'mother_name', fields['mother_name']);
-  //     _addIfNotEmpty(body, 'husband_name', fields['husband_name']);
-  //     _addIfNotEmpty(body, 'dob', _convertDate(fields['date_of_birth']));
-  //     _addIfNotEmpty(body, 'date_of_joining',
-  //         _convertDate(fields['date_of_joining']));
-  //     _addIfNotEmpty(body, 'address', fields['address']);
-  //     _addIfNotEmpty(body, 'pincode', fields['pincode']);
-  //     _addIfNotEmpty(body, 'employee_id', fields['employee_id']);
-  //     _addIfNotEmpty(body, 'national_code', fields['national_code']);
-  //
-  //     ///  MOST IMPORTANT FIX (ROLE MUST BE ARRAY)
-  //     final roleRaw = roleId ?? fields['role'];
-  //     if (roleRaw != null && roleRaw.toString().isNotEmpty) {
-  //       final roleInt = int.tryParse(roleRaw.toString());
-  //       if (roleInt != null) {
-  //         body['role'] = [roleInt];
-  //       }
-  //     }
-  //
-  //     /// gender
-  //     final gender = fields['gender']?.toString().trim() ?? '';
-  //     if (gender.isNotEmpty &&
-  //         gender.toLowerCase() != '-select gender-') {
-  //       body['gender'] = gender.toLowerCase();
-  //     }
-  //
-  //     /// blood group
-  //     final bg = fields['blood_group']?.toString().trim() ?? '';
-  //     if (bg.isNotEmpty && bg != 'Select Blood Group') {
-  //       body['blood_group'] = bg;
-  //     }
-  //
-  //     /// emergency contacts
-  //     final validContacts = emergencyContacts
-  //         .where((e) =>
-  //     (e['name'] ?? '').isNotEmpty ||
-  //         (e['phone'] ?? '').isNotEmpty)
-  //         .map((e) => {
-  //       'name': e['name'] ?? '',
-  //       'phone': e['phone'] ?? '',
-  //       'relation': e['relation'] ?? '',
-  //     })
-  //         .toList();
-  //
-  //     body['emergency_contacts'] = validContacts;
-  //
-  //     print('FINAL UPDATE BODY: $body');
-  //
-  //     final response = await http.put(
-  //       Uri.parse(url),
-  //       headers: {
-  //         'Authorization': 'Bearer $token',
-  //         'Accept': 'application/json',
-  //         'Content-Type': 'application/json',
-  //       },
-  //       body: jsonEncode(body),
-  //     );
-  //
-  //     print('UPDATE RESPONSE: ${response.statusCode} ${response.body}');
-  //
-  //     if (response.statusCode == 200 || response.statusCode == 201) {
-  //       final json = jsonDecode(response.body) as Map<String, dynamic>;
-  //       final staffData = json['data'] as Map<String, dynamic>?;
-  //
-  //       emit(AddStaffState(
-  //         success: true,
-  //         message:
-  //         json['message']?.toString() ?? 'Staff updated successfully',
-  //         updatedStaff: staffData != null
-  //             ? StaffDetailModel.fromJson(staffData)
-  //             : null,
-  //       ));
-  //     } else {
-  //       emit(AddStaffState(error: _parseError(response)));
-  //     }
-  //   } catch (e) {
-  //     print('UPDATE STAFF EXCEPTION: $e');
-  //     emit(AddStaffState(error: e.toString()));
-  //   }
-  // }
-
-  void _addIfNotEmpty(
-      Map<String, dynamic> body, String key, dynamic value) {
-    if (value != null && value.toString().isNotEmpty) {
-      body[key] = value;
-    }
-  }
-
-  String? _convertDate(dynamic raw) {
-    if (raw == null) return null;
-    final str = raw.toString().trim();
-    if (str.isEmpty) return null;
-    final parts = str.split(RegExp(r'[./\-]'));
-    if (parts.length == 3) {
-      if (parts[0].length == 4) return str;
-      return '${parts[2]}-${parts[1].padLeft(2, '0')}-${parts[0].padLeft(2, '0')}';
-    }
-    return str;
   }
 
   String _parseError(http.Response response) {
@@ -324,13 +257,12 @@ class AddStaffCubit extends Cubit<AddStaffState> {
           : 'Request failed with status ${response.statusCode}';
     }
 
-    String msg = json['message'] ??
-        'Request failed with status ${response.statusCode}';
+    String msg = json['message'] ?? 'Request failed with status ${response.statusCode}';
 
     final errors = json['errors'] as Map<String, dynamic>?;
     if (errors != null && errors.isNotEmpty) {
-      final errorMessages = errors.values
-          .expand((v) => v is List ? v : [v])
+      final errorMessages = errors.entries
+          .expand((e) => e.value is List ? e.value as List : [e.value])
           .take(3)
           .join('\n');
       if (errorMessages.isNotEmpty) msg = errorMessages;
@@ -353,8 +285,7 @@ class AddStaffCubit extends Cubit<AddStaffState> {
     return msg;
   }
 
-  Map<String, dynamic> _buildBody(
-      String schoolId, Map<String, dynamic> fields) {
+  Map<String, dynamic> _buildBody(String schoolId, Map<String, dynamic> fields, {bool isAdd = false}) {
     String? convertDate(String? raw) {
       if (raw == null || raw.isEmpty) return null;
       final parts = raw.split(RegExp(r'[./\-]'));
@@ -367,6 +298,14 @@ class AddStaffCubit extends Cubit<AddStaffState> {
 
     final body = <String, dynamic>{'school_id': schoolId};
 
+    if (isAdd) {
+      final pw = fields['password']?.toString().trim() ?? '';
+      if (pw.isEmpty) {
+        body['password'] = 'Staff@1234';
+        body['password_confirmation'] = 'Staff@1234';
+      }
+    }
+
     fields.forEach((key, value) {
       if (value == null) return;
       final str = value.toString().trim();
@@ -375,7 +314,7 @@ class AddStaffCubit extends Cubit<AddStaffState> {
       switch (key) {
         case 'date_of_birth':
         case 'dob':
-          body['dob'] = convertDate(str);
+          body['date_of_birth'] = convertDate(str);
           break;
         case 'date_of_joining':
           body['date_of_joining'] = convertDate(str);
@@ -392,7 +331,9 @@ class AddStaffCubit extends Cubit<AddStaffState> {
           break;
         case 'role':
         case 'role_id':
-          if (int.tryParse(str) != null) body['role'] = str;
+          if (int.tryParse(str) != null) {
+            body['role'] = int.parse(str);
+          }
           break;
         default:
           body[key] = str;

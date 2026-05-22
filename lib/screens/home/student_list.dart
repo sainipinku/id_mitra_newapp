@@ -1,0 +1,3743 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_exif_rotation/flutter_exif_rotation.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:image_cropper/image_cropper.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:printing/printing.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'package:idmitra/api_mamanger/api_manager.dart';
+import 'package:idmitra/api_mamanger/config.dart';
+import 'package:idmitra/Widgets/shimmer_loader.dart';
+import 'package:idmitra/Widgets/svg_file.dart';
+import 'package:idmitra/components/app_theme.dart';
+import 'package:idmitra/components/my_font_weight.dart';
+import 'package:idmitra/components/text_filed.dart';
+import 'package:idmitra/models/correction/CorrectionListModel.dart';
+import 'package:idmitra/models/orders/OrderModel.dart';
+import 'package:idmitra/models/schools/SchoolListModel.dart';
+import 'package:idmitra/models/students/StudentsListModel.dart';
+import 'package:idmitra/providers/add_student/add_student_cubit.dart';
+import 'package:idmitra/providers/correction/correction_cubit.dart';
+import 'package:idmitra/providers/correction/correction_state.dart';
+import 'package:idmitra/providers/orders/orders_cubit.dart';
+import 'package:idmitra/providers/orders/orders_state.dart';
+import 'package:idmitra/providers/school/school_cubit.dart';
+import 'package:idmitra/providers/student_form/student_form_cubit.dart';
+import 'package:idmitra/providers/student_form/student_form_data_cubit.dart';
+import 'package:idmitra/providers/students/students_cubit.dart';
+import 'package:idmitra/providers/students/students_state.dart';
+import 'package:idmitra/screens/add_student/add_student_form.dart';
+import 'package:idmitra/screens/home/FilterBottomSheet.dart';
+import 'package:idmitra/screens/home/StudentCard.dart';
+import 'package:idmitra/screens/home/StudentIdCardWidget.dart';
+import 'package:idmitra/screens/orders/order_detail_page.dart';
+
+
+class StudentListingPage extends StatefulWidget {
+  final String schoolId;
+  final SchoolDetailsModel? schoolDetailsModel;
+  final bool isSchool;
+
+  const StudentListingPage({
+    super.key,
+    required this.schoolId,
+    this.schoolDetailsModel,
+    this.isSchool = false,
+  });
+
+  @override
+  State<StudentListingPage> createState() => _StudentListingPageState();
+}
+
+class _StudentListingPageState extends State<StudentListingPage>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  bool _correctionIsGridView = false;
+  bool _studentsIsGridView = false;
+  late OrdersCubit _ordersCubit;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() => setState(() {}));
+    _ordersCubit = OrdersCubit()
+      ..fetchSchoolOrders(schoolId: widget.schoolId);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _ordersCubit.close();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tabIndex = _tabController.index;
+    final showIdCardBtn = tabIndex != 2;
+    final isGridView =
+    tabIndex == 0 ? _studentsIsGridView : _correctionIsGridView;
+
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(
+          create: (_) => CorrectionCubit()
+            ..fetchCorrectionStudents(schoolId: widget.schoolId),
+        ),
+      ],
+      child: Scaffold(
+        appBar: AppBar(
+          elevation: 0,
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          automaticallyImplyLeading: false,
+          leading: Padding(
+            padding: const EdgeInsets.all(10.0),
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.rectangle,
+                  border: Border.all(color: AppTheme.titleHintColor),
+                  borderRadius: const BorderRadius.all(Radius.circular(8)),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.all(5.0),
+                  child: Icon(Icons.arrow_back_ios_new_rounded,
+                      size: 18, color: Colors.black87),
+                ),
+              ),
+            ),
+          ),
+          centerTitle: true,
+          title: Text('Student Listings',
+              style: MyStyles.boldText(size: 20, color: Colors.black)),
+          actions: showIdCardBtn
+              ? [
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: GestureDetector(
+                onTap: () {
+                  if (tabIndex == 0) {
+                    setState(
+                            () => _studentsIsGridView = !_studentsIsGridView);
+                  } else {
+                    setState(() =>
+                    _correctionIsGridView = !_correctionIsGridView);
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: isGridView ? AppTheme.btnColor : Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isGridView
+                          ? AppTheme.btnColor
+                          : Colors.grey.shade300,
+                    ),
+                    boxShadow: isGridView
+                        ? [
+                      BoxShadow(
+                          color:
+                          AppTheme.btnColor.withOpacity(0.3),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2))
+                    ]
+                        : [],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isGridView
+                            ? Icons.view_list_rounded
+                            : Icons.badge_outlined,
+                        size: 18,
+                        color: isGridView
+                            ? Colors.white
+                            : AppTheme.black_Color,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        isGridView ? 'List' : 'ID Card',
+                        style: MyStyles.mediumText(
+                          size: 12,
+                          color: isGridView
+                              ? Colors.white
+                              : AppTheme.black_Color,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ]
+              : null,
+          bottom: TabBar(
+            controller: _tabController,
+            labelColor: AppTheme.btnColor,
+            unselectedLabelColor: AppTheme.graySubTitleColor,
+            indicatorColor: AppTheme.btnColor,
+            indicatorWeight: 2.5,
+            labelStyle: MyStyles.mediumText(size: 13, color: Colors.white),
+            unselectedLabelStyle:
+            MyStyles.regularText(size: 13, color: Colors.white),
+            tabs: const [
+              Tab(text: 'Students List'),
+              Tab(text: 'Correction List'),
+              Tab(text: 'Orders List'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            _StudentsTab(
+              schoolId: widget.schoolId,
+              schoolDetailsModel: widget.schoolDetailsModel,
+              isGridView: _studentsIsGridView,
+            ),
+            _CorrectionListTab(
+              schoolId: widget.schoolId,
+              isSchool: widget.isSchool,
+              isGridView: _correctionIsGridView,
+              onToggleGridView: () => setState(
+                      () => _correctionIsGridView = !_correctionIsGridView),
+              schoolDetailsModel: widget.schoolDetailsModel,
+              ordersCubit: _ordersCubit,
+            ),
+            BlocProvider.value(
+              value: _ordersCubit,
+              child: _OrdersTab(schoolId: widget.schoolId),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// COUNT BANNER
+// ─────────────────────────────────────────────────────────────
+
+class _CountBanner extends StatelessWidget {
+  final int total;
+  final String label;
+  const _CountBanner({required this.total, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: AppTheme.btnColor.withOpacity(0.08),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Text(
+        '$label: $total',
+        style: MyStyles.mediumText(size: 13, color: AppTheme.btnColor),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// STUDENTS TAB
+// ─────────────────────────────────────────────────────────────
+
+class _StudentsTab extends StatefulWidget {
+  final String schoolId;
+  final SchoolDetailsModel? schoolDetailsModel;
+  final bool isGridView;
+
+  const _StudentsTab({
+    required this.schoolId,
+    this.schoolDetailsModel,
+    this.isGridView = false,
+  });
+
+  @override
+  State<_StudentsTab> createState() => _StudentsTabState();
+}
+
+class _StudentsTabState extends State<_StudentsTab> {
+  final TextEditingController _searchCtrl = TextEditingController();
+  final ScrollController _scrollCtrl = ScrollController();
+  final ScrollController _gridScrollCtrl = ScrollController();
+  Timer? _debounce;
+
+  final Set<int> _selectedIds = {};
+  final Map<int, String> _idToUuid = {};
+
+  bool get _isGridView => widget.isGridView;
+
+  void _toggleSelect(StudentDetailsData student) {
+    if (student.id == null) return;
+    setState(() {
+      if (_selectedIds.contains(student.id)) {
+        _selectedIds.remove(student.id);
+      } else {
+        _selectedIds.add(student.id!);
+        if (student.uuid != null) _idToUuid[student.id!] = student.uuid!;
+      }
+    });
+  }
+
+  void _selectAll(List<StudentDetailsData> students) {
+    setState(() {
+      for (final s in students) {
+        if (s.id != null) {
+          _selectedIds.add(s.id!);
+          if (s.uuid != null) _idToUuid[s.id!] = s.uuid!;
+        }
+      }
+    });
+  }
+
+  void _clearSelection() => setState(() => _selectedIds.clear());
+
+  void _showProcessChecklistDialog(BuildContext ctx) {
+    final uuids = _selectedIds
+        .where((id) => _idToUuid.containsKey(id))
+        .map((id) => _idToUuid[id]!)
+        .toList();
+    showDialog(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (_) => BlocProvider.value(
+        value: context.read<CorrectionCubit>(),
+        child: _ProcessChecklistDialog(
+          schoolId: widget.schoolId,
+          studentUuids: uuids,
+          onSuccess: () {
+            _clearSelection();
+            context.read<StudentsCubit>().fetchStudents(
+              search: _searchCtrl.text.trim(),
+              schoolId: widget.schoolId,
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _navigateToAddStudent() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MultiBlocProvider(
+          providers: [
+            BlocProvider(
+              create: (_) => StudentFormCubit()
+                ..loadFromSchoolId(
+                    schoolId: widget.schoolId, schoolName: ''),
+            ),
+            BlocProvider(
+              create: (_) =>
+              StudentFormDataCubit()..load(widget.schoolId),
+            ),
+            BlocProvider(create: (_) => AddStudentCubit()),
+          ],
+          child: AddStudentFormPage(schoolId: widget.schoolId),
+        ),
+      ),
+    ).then((result) {
+      if (result != null && result is StudentDetailsData) {
+        context.read<StudentsCubit>().prependStudent(result);
+      } else {
+        context.read<StudentsCubit>().fetchStudents(
+          search: _searchCtrl.text.trim(),
+          schoolId: widget.schoolId,
+          gender: '',
+          classId: '',
+        );
+      }
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final cubit = context.read<StudentsCubit>();
+
+    //  Sync offline students first (Doc 5)
+    cubit.syncOfflineStudents(schoolId: widget.schoolId);
+
+    //  Background full sync (Doc 5)
+    cubit.syncAllStudents(schoolId: widget.schoolId);
+
+    //  Initial fetch with schoolId (Doc 6)
+    cubit.fetchStudents(search: '', schoolId: widget.schoolId);
+
+    // imageShape fetch (Doc 6)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final schoolIntId = widget.schoolDetailsModel?.id;
+        if (schoolIntId != null) {
+          context.read<SchoolCubit>().fetchAndApplyImageShape(schoolIntId);
+        }
+      }
+    });
+
+    // Pagination scroll listener
+    void onScroll() {
+      if (_scrollCtrl.hasClients && _scrollCtrl.position.pixels >= _scrollCtrl.position.maxScrollExtent - 200) {
+        _fetchMore();
+      }
+      if (_gridScrollCtrl.hasClients && _gridScrollCtrl.position.pixels >= _gridScrollCtrl.position.maxScrollExtent - 200) {
+        _fetchMore();
+      }
+    }
+
+    _scrollCtrl.addListener(onScroll);
+    _gridScrollCtrl.addListener(onScroll);
+  }
+
+  void _fetchMore() {
+    final state = context.read<StudentsCubit>().state;
+    context.read<StudentsCubit>().fetchStudents(
+      isLoadMore: true,
+      search: _searchCtrl.text.trim(),
+      schoolId: widget.schoolId,
+      gender: state.selectedGender,
+      classId: state.selectedClassId,
+      sectionIds: state.selectedSectionIds,
+    );
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _scrollCtrl.dispose();
+    _gridScrollCtrl.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      floatingActionButton: _isGridView
+          ? null
+          : FloatingActionButton(
+        backgroundColor: AppTheme.btnColor,
+        tooltip: 'Add Student',
+        onPressed: _navigateToAddStudent,
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
+      body: Column(
+        children: [
+          BlocBuilder<StudentsCubit, StudentsState>(
+            buildWhen: (p, c) => p.total != c.total,
+            builder: (_, s) =>
+                _CountBanner(total: s.total, label: 'Total Students'),
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () async {
+                _searchCtrl.clear();
+                context.read<StudentsCubit>().applyFilters(
+                  schoolId: widget.schoolId,
+                  classId: '',
+                  gender: '',
+                  sectionIds: [],
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    // Selection toolbar
+                    if (_selectedIds.isNotEmpty)
+                      BlocBuilder<StudentsCubit, StudentsState>(
+                        builder: (_, studState) => Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.btnColor.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            children: [
+                              TextButton(
+                                onPressed: () =>
+                                    _selectAll(studState.studentsList),
+                                child: Text('Select All',
+                                    style: MyStyles.mediumText(
+                                        size: 12,
+                                        color: AppTheme.btnColor)),
+                              ),
+                              TextButton(
+                                onPressed: _clearSelection,
+                                child: Text('Clear',
+                                    style: MyStyles.mediumText(
+                                        size: 12, color: Colors.grey)),
+                              ),
+                              const SizedBox(width: 4),
+                              GestureDetector(
+                                onTap: () =>
+                                    _showProcessChecklistDialog(context),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 7),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.btnColor,
+                                    borderRadius:
+                                    BorderRadius.circular(20),
+                                  ),
+                                  child: Text('Process Checklist',
+                                      style: MyStyles.mediumText(
+                                          size: 12, color: Colors.white)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                    // Search + Filter row
+                    Row(
+                      children: [
+                        Expanded(child: _searchBar()),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () async {
+                            final result = await showModalBottomSheet<
+                                Map<String, dynamic>>(
+                              context: context,
+                              isScrollControlled: true,
+                              backgroundColor: AppTheme.whiteColor,
+                              shape: const RoundedRectangleBorder(
+                                borderRadius: BorderRadius.vertical(
+                                    top: Radius.circular(25)),
+                              ),
+                              builder: (_) => BlocProvider(
+                                create: (_) => OrdersCubit()
+                                  ..fetchSchoolClasses(widget.schoolId),
+                                child: FilterBottomSheet(
+                                    schoolId: widget.schoolId),
+                              ),
+                            );
+                            if (result != null) {
+                              final String? classId = result['class'];
+                              final String? gender = result['gender']
+                                  ?.toString()
+                                  .toLowerCase();
+                              final List<int> sectionIds = result['section'] is List
+                                  ? List<int>.from(
+                                  (result['section'] as List)
+                                      .map((e) => int.tryParse(e.toString()) ?? 0)
+                                      .where((e) => e != 0))
+                                  : [];
+                              _debounce?.cancel();
+                              _debounce = Timer(
+                                  const Duration(milliseconds: 500), () {
+                                context
+                                    .read<StudentsCubit>()
+                                    .applyFilters(
+                                  schoolId: widget.schoolId,
+                                  classId: classId ?? '',
+                                  gender: gender ?? '',
+                                  sectionIds: sectionIds,
+                                );
+                              });
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: svgIcon(
+                                icon: 'assets/icons/filtter.svg',
+                                clr: AppTheme.black_Color),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    Expanded(
+                      child: BlocBuilder<StudentsCubit, StudentsState>(
+                        builder: (context, state) {
+                          final schoolState =
+                              context.watch<SchoolCubit>().state;
+
+                          // Show shimmer during initial sync
+                          if (state.isSyncing && state.studentsList.isEmpty) {
+                            return const ShimmerList(expanded: false);
+                          }
+                          if (state.loading && state.studentsList.isEmpty) {
+                            return const ShimmerList(expanded: false);
+                          }
+                          if (state.studentsList.isEmpty) {
+                            return Center(
+                                child: Image.asset(
+                                    'assets/images/no_data.png',
+                                    height: 200));
+                          }
+
+                          final itemCount = state.studentsList.length +
+                              (state.hasMore ? 1 : 0);
+
+                          if (_isGridView) {
+                            return ListView.builder(
+                              physics:
+                              const AlwaysScrollableScrollPhysics(),
+                              controller: _gridScrollCtrl,
+                              itemCount: itemCount,
+                              itemBuilder: (context, index) {
+
+                                if (index < state.studentsList.length) {
+                                  return Padding(
+                                    padding: const EdgeInsets.only(
+                                        bottom: 20),
+                                    child: Center(
+                                      child: SizedBox(
+                                        width: 300,
+                                        child: Hero(
+                                          tag:
+                                          'student_card_${state.studentsList[index].uuid}',
+                                          child: Material(
+                                            color: Colors.transparent,
+                                            child: StudentIdCardWidget(
+                                              student: state
+                                                  .studentsList[index],
+                                              schoolId: widget.schoolId,
+                                              schoolDetailsModel:
+                                              widget.schoolDetailsModel,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }
+                                return const Padding(
+                                  padding: EdgeInsets.all(16),
+                                  child: Center(
+                                      child: CircularProgressIndicator()),
+                                );
+                              },
+                            );
+                          }
+
+                          return ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            controller: _scrollCtrl,
+                            itemCount: itemCount,
+                            itemBuilder: (context, index) {
+                              print(jsonEncode("singledata-----${state.studentsList[0].toJson()}"));
+                              if (index < state.studentsList.length) {
+                                final student = state.studentsList[index];
+                                String? imageShape =
+                                    widget.schoolDetailsModel?.imageShape;
+                                try {
+                                  final schoolId =
+                                      widget.schoolDetailsModel?.id ??
+                                          student.schoolId;
+                                  if (schoolId != null) {
+                                    if (schoolState.imageShapeMap
+                                        .containsKey(schoolId)) {
+                                      imageShape = schoolState
+                                          .imageShapeMap[schoolId];
+                                    } else {
+                                      final match =
+                                      schoolState.students.firstWhere(
+                                            (s) => s.id == schoolId,
+                                        orElse: () => SchoolDetailsModel(),
+                                      );
+                                      if (match.imageShape != null &&
+                                          match.imageShape!.isNotEmpty) {
+                                        imageShape = match.imageShape;
+                                      }
+                                    }
+                                  }
+                                } catch (_) {}
+
+                                final isSelected = student.id != null &&
+                                    _selectedIds.contains(student.id);
+
+                                return StudentCard(
+                                  key: ValueKey(student.uuid),
+                                  studentData: student,
+                                  schoolId: widget.schoolId,
+                                  schoolIntId:
+                                  widget.schoolDetailsModel?.id ??
+                                      student.schoolId,
+                                  imageShape: imageShape,
+                                  isSelected: isSelected,
+                                  onToggle: () => _toggleSelect(student),
+                                );
+                              }
+                              return const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Center(
+                                    child: CircularProgressIndicator()),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _searchBar() => TextField(
+    controller: _searchCtrl,
+    style:
+    MyStyles.regularText(size: 14, color: AppTheme.black_Color),
+    onChanged: (value) {
+      _debounce?.cancel();
+      _debounce = Timer(const Duration(milliseconds: 500), () {
+        context.read<StudentsCubit>().fetchStudents(
+          search: value.trim(),
+          schoolId: widget.schoolId,
+        );
+      });
+    },
+    decoration: InputDecoration(
+      filled: true,
+      fillColor: AppTheme.whiteColor,
+      contentPadding: const EdgeInsets.all(12),
+      hintText: 'Search by name...',
+      prefixIcon: const Icon(Icons.search),
+      enabledBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: AppTheme.backBtnBgColor),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: AppTheme.backBtnBgColor),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      hintStyle: MyStyles.regularText(
+          size: 14, color: AppTheme.graySubTitleColor),
+    ),
+  );
+}
+
+
+class _CorrectionListTab extends StatefulWidget {
+  final String schoolId;
+  final bool isSchool;
+  final VoidCallback? onOrderSent;
+  final bool isGridView;
+  final VoidCallback? onToggleGridView;
+  final SchoolDetailsModel? schoolDetailsModel;
+  final OrdersCubit? ordersCubit;
+
+  const _CorrectionListTab({
+    required this.schoolId,
+    this.isSchool = false,
+    this.onOrderSent,
+    this.isGridView = false,
+    this.onToggleGridView,
+    this.schoolDetailsModel,
+    this.ordersCubit,
+  });
+
+  @override
+  State<_CorrectionListTab> createState() => _CorrectionListTabState();
+}
+
+class _CorrectionListTabState extends State<_CorrectionListTab> {
+  final ScrollController _scrollCtrl = ScrollController();
+  final TextEditingController _searchCtrl = TextEditingController();
+  Timer? _debounce;
+
+  bool get _isGridView => widget.isGridView;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollCtrl.addListener(() {
+      if (_scrollCtrl.position.pixels >=
+          _scrollCtrl.position.maxScrollExtent - 200) {
+        context.read<CorrectionCubit>().fetchCorrectionStudents(
+          schoolId: widget.schoolId,
+          isLoadMore: true,
+        );
+      }
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final schoolIntId = widget.schoolDetailsModel?.id;
+        if (schoolIntId != null) {
+          // Always fetch latest imageShape from API so changes reflect immediately
+          context.read<SchoolCubit>().fetchAndApplyImageShape(schoolIntId);
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    _searchCtrl.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      floatingActionButton: _isGridView
+          ? null
+          : FloatingActionButton(
+        backgroundColor: AppTheme.btnColor,
+        tooltip: 'Download',
+        onPressed: () => _showDownloadDialog(context),
+        child:
+        const Icon(Icons.download_rounded, color: Colors.white),
+      ),
+      body: BlocListener<CorrectionCubit, CorrectionState>(
+        listenWhen: (p, c) =>
+        p.downloadUrl != c.downloadUrl ||
+            p.downloadError != c.downloadError ||
+            p.sendOrderSuccess != c.sendOrderSuccess ||
+            p.sendOrderError != c.sendOrderError ||
+            p.createOrderSuccess != c.createOrderSuccess ||
+            p.createOrderError != c.createOrderError,
+        listener: (context, state) async {
+          if (state.syncSuccess) {
+            widget.ordersCubit?.fetchSchoolOrders(
+              schoolId: widget.schoolId,
+            );
+          }
+          if (state.sendOrderSuccess) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(state.sendOrderMessage ?? 'Order sent successfully!'),
+              backgroundColor: AppTheme.btnColor,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              margin: const EdgeInsets.all(12),
+            ));
+            context.read<CorrectionCubit>().fetchCorrectionStudents(
+              schoolId: widget.schoolId,
+            );
+            widget.ordersCubit?.fetchSchoolOrders(
+              schoolId: widget.schoolId,
+            );
+          }
+          if (state.sendOrderError != null) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(state.sendOrderError!),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              margin: const EdgeInsets.all(12),
+            ));
+          }
+          if (state.createOrderSuccess) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: const Text('Order created successfully!'),
+              backgroundColor: AppTheme.btnColor,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              margin: const EdgeInsets.all(12),
+            ));
+            context.read<CorrectionCubit>().fetchCorrectionStudents(
+              schoolId: widget.schoolId,
+            );
+            widget.ordersCubit?.fetchSchoolOrders(
+              schoolId: widget.schoolId,
+            );
+          }
+          if (state.createOrderError != null) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(state.createOrderError!),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              margin: const EdgeInsets.all(12),
+            ));
+          }
+          if (!state.downloadLoading &&
+              state.downloadUrl != null &&
+              state.downloadUrl!.isNotEmpty) {
+            final uri = Uri.tryParse(state.downloadUrl!);
+            if (uri != null) {
+              try {
+                await launchUrl(uri,
+                    mode: LaunchMode.externalApplication);
+              } catch (_) {}
+            }
+          }
+          if (!state.downloadLoading && state.downloadError != null) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(state.downloadError!),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              margin: const EdgeInsets.all(12),
+            ));
+          }
+        },
+        child: Column(
+          children: [
+            BlocBuilder<CorrectionCubit, CorrectionState>(
+              buildWhen: (p, c) => p.studentsTotal != c.studentsTotal,
+              builder: (_, s) => _CountBanner(
+                  total: s.studentsTotal, label: 'Total Correction'),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Expanded(child: _searchBar()),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () async {
+                      final result = await showModalBottomSheet<
+                          Map<String, dynamic>>(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: AppTheme.whiteColor,
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(25)),
+                        ),
+                        builder: (_) => BlocProvider(
+                          create: (_) => OrdersCubit()
+                            ..fetchSchoolClasses(widget.schoolId),
+                          child: FilterBottomSheet(
+                              schoolId: widget.schoolId),
+                        ),
+                      );
+                      if (result != null) {
+                        _debounce?.cancel();
+                        _debounce = Timer(
+                            const Duration(milliseconds: 300), () {
+                          final rawClass = result['class'];
+                          final List<String> classIds =
+                          rawClass is String && rawClass.isNotEmpty
+                              ? rawClass
+                              .split(',')
+                              .map((e) => e.trim())
+                              .where((e) => e.isNotEmpty)
+                              .toList()
+                              : [];
+                          final List<int> sectionIds =
+                          result['section'] is List
+                              ? List<int>.from(
+                              (result['section'] as List)
+                                  .map((e) =>
+                              int.tryParse(
+                                  e.toString()) ??
+                                  0)
+                                  .where((e) => e != 0))
+                              : [];
+                          context
+                              .read<CorrectionCubit>()
+                              .fetchCorrectionStudents(
+                            schoolId: widget.schoolId,
+                            classIds: classIds,
+                            sectionIds: sectionIds,
+                            search: _searchCtrl.text.trim(),
+                          );
+                        });
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: svgIcon(
+                          icon: 'assets/icons/filtter.svg',
+                          clr: AppTheme.black_Color),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: BlocBuilder<CorrectionCubit, CorrectionState>(
+                builder: (context, state) {
+                  final schoolState =
+                      context.watch<SchoolCubit>().state;
+                  final schoolId = widget.schoolDetailsModel?.id;
+                  String? imageShape;
+                  if (schoolId != null && schoolState.imageShapeMap.containsKey(schoolId)) {
+                    imageShape = schoolState.imageShapeMap[schoolId];
+                  } else {
+                    try {
+                      if (schoolId != null) {
+                        final match = schoolState.students.firstWhere(
+                              (s) => s.id == schoolId,
+                          orElse: () => SchoolDetailsModel(),
+                        );
+                        if (match.imageShape != null && match.imageShape!.isNotEmpty) {
+                          imageShape = match.imageShape;
+                        }
+                      }
+                    } catch (_) {}
+                    imageShape ??= widget.schoolDetailsModel?.imageShape;
+                  }
+
+                  if (state.studentsLoading && state.students.isEmpty) {
+                    return const ShimmerList(expanded: false);
+                  }
+                  if (state.studentsError != null &&
+                      state.students.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.error_outline,
+                              size: 48, color: Colors.red.shade300),
+                          const SizedBox(height: 12),
+                          Text(state.studentsError!,
+                              style: MyStyles.regularText(
+                                  size: 14, color: Colors.red)),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: () => context
+                                .read<CorrectionCubit>()
+                                .fetchCorrectionStudents(
+                                schoolId: widget.schoolId),
+                            icon: const Icon(Icons.refresh, size: 16),
+                            label: const Text('Retry'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.btnColor,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius:
+                                  BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  if (state.students.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Image.asset('assets/images/no_data.png',
+                              height: 160),
+                          const SizedBox(height: 12),
+                          Text('No students found',
+                              style: MyStyles.mediumText(
+                                  size: 14,
+                                  color: AppTheme.graySubTitleColor)),
+                        ],
+                      ),
+                    );
+                  }
+
+                  return RefreshIndicator(
+                    color: AppTheme.btnColor,
+                    onRefresh: () async {
+                      _searchCtrl.clear();
+                      context.read<CorrectionCubit>().fetchCorrectionStudents(
+                        schoolId: widget.schoolId,
+                      );
+                    },
+                    child: Column(
+                      children: [
+                        if (!_isGridView &&
+                            state.selectedStudentIds.isNotEmpty)
+                          Container(
+                            color: AppTheme.btnColor.withOpacity(0.08),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 10),
+                            child: Row(
+                              children: [
+                                Text(
+                                  '${state.selectedStudentIds.length} selected',
+                                  style: MyStyles.mediumText(
+                                      size: 13,
+                                      color: AppTheme.btnColor),
+                                ),
+                                const Spacer(),
+                                TextButton(
+                                  onPressed: () => context
+                                      .read<CorrectionCubit>()
+                                      .selectAllStudents(),
+                                  child: Text('Select All',
+                                      style: MyStyles.mediumText(
+                                          size: 12,
+                                          color: AppTheme.btnColor)),
+                                ),
+                                TextButton(
+                                  onPressed: () => context
+                                      .read<CorrectionCubit>()
+                                      .clearStudentSelection(),
+                                  child: Text('Clear',
+                                      style: MyStyles.mediumText(
+                                          size: 12,
+                                          color: Colors.grey)),
+                                ),
+                                const SizedBox(width: 4),
+                                state.sendOrderLoading
+                                    ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppTheme.btnColor),
+                                )
+                                    : GestureDetector(
+                                  onTap: () =>
+                                      _showCreateOrderDialog(
+                                          context),
+                                  child: Container(
+                                    padding: const EdgeInsets
+                                        .symmetric(
+                                        horizontal: 14,
+                                        vertical: 7),
+                                    decoration: BoxDecoration(
+                                        color: AppTheme.btnColor,
+                                        borderRadius:
+                                        BorderRadius.circular(
+                                            20)),
+                                    child: Row(
+                                      mainAxisSize:
+                                      MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                            Icons.send_rounded,
+                                            size: 13,
+                                            color: Colors.white),
+                                        const SizedBox(width: 5),
+                                        Text('Create Order',
+                                            style:
+                                            MyStyles.mediumText(
+                                                size: 12,
+                                                color: Colors
+                                                    .white)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        Expanded(
+                          child: _isGridView
+                              ? ListView.builder(
+                            controller: _scrollCtrl,
+                            padding: const EdgeInsets.fromLTRB(
+                                16, 4, 16, 80),
+                            itemCount: state.students.length +
+                                (state.studentsHasMore ? 1 : 0),
+                            itemBuilder: (_, i) {
+                              if (i < state.students.length) {
+                                final item = state.students[i];
+                                final s = item.student;
+                                if (s == null) {
+                                  return const SizedBox.shrink();
+                                }
+                                return Padding(
+                                  padding: const EdgeInsets.only(
+                                      bottom: 20),
+                                  child: Center(
+                                    child: SizedBox(
+                                      width: 300,
+                                      child: StudentIdCardWidget(
+                                        student:
+                                        _correctionToStudentData(
+                                            s),
+                                        schoolId: widget.schoolId,
+                                        schoolDetailsModel: widget
+                                            .schoolDetailsModel,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(
+                                    vertical: 20),
+                                child: Center(
+                                    child:
+                                    CircularProgressIndicator(
+                                        color:
+                                        AppTheme.btnColor,
+                                        strokeWidth: 2)),
+                              );
+                            },
+                          )
+                              : ListView.builder(
+                            controller: _scrollCtrl,
+                            padding: const EdgeInsets.fromLTRB(
+                                16, 4, 16, 20),
+                            itemCount: state.students.length +
+                                (state.studentsHasMore ? 1 : 0),
+                            itemBuilder: (_, i) {
+                              if (i < state.students.length) {
+                                final item = state.students[i];
+                                final isSelected = state
+                                    .selectedStudentIds
+                                    .contains(item.id);
+                                return _CorrectionCard(
+                                  item: item,
+                                  isSelected: isSelected,
+                                  imageShape: imageShape,
+                                  onToggle: () => context
+                                      .read<CorrectionCubit>()
+                                      .toggleStudentSelection(
+                                      item.id),
+                                  onTapCard: () {
+                                    final s = item.student;
+                                    if (s == null) return;
+                                    final studentData =
+                                    _correctionToStudentData(
+                                        s);
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            MultiBlocProvider(
+                                              providers: [
+                                                BlocProvider(
+                                                  create: (_) =>
+                                                  StudentFormCubit()
+                                                    ..loadFromSchoolId(
+                                                      schoolId: widget
+                                                          .schoolId,
+                                                      schoolName:
+                                                      '',
+                                                    ),
+                                                ),
+                                                BlocProvider(
+                                                  create: (_) =>
+                                                  StudentFormDataCubit()
+                                                    ..load(widget
+                                                        .schoolId),
+                                                ),
+                                                BlocProvider(
+                                                  create: (_) =>
+                                                      AddStudentCubit(),
+                                                ),
+                                              ],
+                                              child:
+                                              AddStudentFormPage(
+                                                schoolId:
+                                                widget.schoolId,
+                                                editStudent:
+                                                studentData,
+                                              ),
+                                            ),
+                                      ),
+                                    ).then((_) {
+                                      context
+                                          .read<CorrectionCubit>()
+                                          .fetchCorrectionStudents(
+                                        schoolId:
+                                        widget.schoolId,
+                                      );
+                                    });
+                                  },
+                                );
+                              }
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(
+                                    vertical: 20),
+                                child: Center(
+                                    child:
+                                    CircularProgressIndicator(
+                                        color:
+                                        AppTheme.btnColor,
+                                        strokeWidth: 2)),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _searchBar() => TextField(
+    controller: _searchCtrl,
+    style: MyStyles.regularText(
+        size: 14, color: AppTheme.black_Color),
+    onChanged: (value) {
+      _debounce?.cancel();
+      _debounce = Timer(const Duration(milliseconds: 500), () {
+        context.read<CorrectionCubit>().fetchCorrectionStudents(
+          schoolId: widget.schoolId,
+          search: value.trim(),
+        );
+      });
+    },
+    decoration: InputDecoration(
+      filled: true,
+      fillColor: AppTheme.whiteColor,
+      contentPadding: const EdgeInsets.all(12),
+      hintText: 'Search by name...',
+      prefixIcon: const Icon(Icons.search),
+      enabledBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: AppTheme.backBtnBgColor),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: AppTheme.backBtnBgColor),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      hintStyle: MyStyles.regularText(
+          size: 14, color: AppTheme.graySubTitleColor),
+    ),
+  );
+
+  void _showDownloadDialog(BuildContext ctx) {
+    showDialog(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (_) => BlocProvider.value(
+        value: ctx.read<CorrectionCubit>(),
+        child: _DownloadChecklistDialog(schoolId: widget.schoolId),
+      ),
+    );
+  }
+
+  void _showCreateOrderDialog(BuildContext ctx) {
+    showDialog(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (_) => BlocProvider.value(
+        value: ctx.read<CorrectionCubit>(),
+        child: _CreateOrderDialog(schoolId: widget.schoolId),
+      ),
+    );
+  }
+
+  StudentDetailsData _correctionToStudentData(CorrectionStudentData s) {
+    return StudentDetailsData(
+      id: s.id,
+      uuid: s.uuid,
+      schoolId: s.schoolId,
+      name: s.name,
+      email: s.email,
+      phone: s.phone,
+      photo: s.photo,
+      profilePhotoUrl: s.profilePhotoUrl ?? s.photoUrl ?? s.photo,
+      fatherName: s.fatherName,
+      fatherPhone: s.fatherPhone,
+      motherName: s.motherName,
+      motherPhone: s.motherPhone,
+      address: s.address,
+      dob: s.dob,
+      regNo: s.regNo,
+      rollNo: s.rollNo,
+      admissionNo: s.admissionNo,
+      schoolClassId: s.schoolClassId,
+      schoolClassSectionId: s.schoolClassSectionId,
+      datumClass: s.studentClass != null
+          ? Class(
+        id: s.studentClass!.id,
+        nameWithprefix: s.studentClass!.nameWithPrefix,
+      )
+          : null,
+      section: s.section != null
+          ? Section(id: s.section!.id, name: s.section!.name)
+          : null,
+    );
+  }
+}
+
+
+
+class _CorrectionCard extends StatefulWidget {
+  final CorrectionStudentItem item;
+  final bool isSelected;
+  final VoidCallback onToggle;
+  final VoidCallback? onTapCard;
+  final String? imageShape;
+
+  const _CorrectionCard({
+    required this.item,
+    required this.isSelected,
+    required this.onToggle,
+    this.onTapCard,
+    this.imageShape,
+  });
+
+  @override
+  State<_CorrectionCard> createState() => _CorrectionCardState();
+}
+
+class _CorrectionCardState extends State<_CorrectionCard> {
+  String? _currentPhotoUrl;
+  bool _isUploading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final s = widget.item.student;
+    _currentPhotoUrl = s?.photoUrl ?? s?.photo ?? s?.profilePhotoUrl ?? '';
+  }
+
+  Future<void> _fromCamera() async {
+    final pickedFile = await ImagePicker()
+        .pickImage(source: ImageSource.camera, imageQuality: 100);
+    if (pickedFile != null) {
+      File rotated =
+      await FlutterExifRotation.rotateImage(path: pickedFile.path);
+      await _uploadImage(rotated.path);
+    }
+  }
+
+  Future<void> _fromGallery() async {
+    final pickedFile =
+    await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (pickedFile == null) return;
+    CroppedFile? cropped = await ImageCropper().cropImage(
+      sourcePath: pickedFile.path,
+      aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Crop Image',
+          toolbarColor: AppTheme.MainColor,
+          toolbarWidgetColor: Colors.white,
+          lockAspectRatio: true,
+          hideBottomControls: true,
+        ),
+        IOSUiSettings(title: 'Crop Image', aspectRatioLockEnabled: true),
+      ],
+    );
+    if (cropped != null) await _uploadImage(cropped.path);
+  }
+
+  Future<void> _uploadImage(String path) async {
+    setState(() => _isUploading = true);
+    try {
+      File fixed = await FlutterExifRotation.rotateImage(path: path);
+      final uuid = widget.item.student?.uuid ?? '';
+      final response = await ApiManager().multiRequestRoute(
+        fixed.path,
+        Config.baseUrl + Routes.updateStudentProfile(uuid),
+      );
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+        setState(
+                () => _currentPhotoUrl = json['data']['profile_photo_url']);
+      }
+    } catch (e) {
+      debugPrint("Upload error: $e");
+    }
+    setState(() => _isUploading = false);
+  }
+
+  void _showPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.whiteColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("Choose Image",
+                style: MyStyles.boldText(size: 14, color: Colors.black)),
+            const SizedBox(height: 15),
+            InkWell(
+              onTap: () {
+                Navigator.pop(ctx);
+                _fromCamera();
+              },
+              child: Row(
+                children: [
+                  SvgPicture.asset('assets/icons/camera_single.svg'),
+                  const SizedBox(width: 10),
+                  Text("Camera",
+                      style: MyStyles.regularText(
+                          size: 14, color: Colors.black)),
+                ],
+              ),
+            ),
+            Container(
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                height: 1,
+                color: Colors.grey.shade300),
+            InkWell(
+              onTap: () {
+                Navigator.pop(ctx);
+                _fromGallery();
+              },
+              child: Row(
+                children: [
+                  SvgPicture.asset(
+                      'assets/icons/choose_from_gallery.svg'),
+                  const SizedBox(width: 10),
+                  Text("Gallery",
+                      style: MyStyles.regularText(
+                          size: 14, color: Colors.black)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showImagePreview(String imageUrl) {
+    final shape = widget.imageShape ?? 'rectangle';
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(16),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            color: Colors.black,
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: InteractiveViewer(
+                    panEnabled: true,
+                    minScale: 0.8,
+                    maxScale: 4,
+                    child: _buildShapedPreview(imageUrl, shape),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _fromCamera();
+                        },
+                        icon: const Icon(Icons.camera_alt, size: 18),
+                        label: const Text("Camera"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.btnColor,
+                          foregroundColor: Colors.white,
+                          padding:
+                          const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _fromGallery();
+                        },
+                        icon: const Icon(Icons.photo_library, size: 18),
+                        label: const Text("Gallery"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.btnColor,
+                          foregroundColor: Colors.white,
+                          padding:
+                          const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          setState(() => _currentPhotoUrl = '');
+                        },
+                        icon: const Icon(Icons.delete, size: 18),
+                        label: const Text("Remove"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          padding:
+                          const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildShapedPreview(String imageUrl, String shape) {
+    final Widget imageWidget;
+    if (imageUrl.startsWith('/') || imageUrl.startsWith('file://')) {
+      imageWidget = Image.file(
+        File(imageUrl),
+        width: double.infinity,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => Container(
+          height: 300,
+          width: double.infinity,
+          color: Colors.grey.shade300,
+          child: const Icon(Icons.person, size: 80, color: Colors.grey),
+        ),
+      );
+    } else {
+      imageWidget = CachedNetworkImage(
+        imageUrl: imageUrl,
+        width: double.infinity,
+        fit: BoxFit.contain,
+        placeholder: (_, __) => const SizedBox(
+            height: 300,
+            child: Center(child: CircularProgressIndicator())),
+        errorWidget: (_, __, ___) => Container(
+          height: 300,
+          width: double.infinity,
+          color: Colors.grey.shade300,
+          child: const Icon(Icons.person, size: 80, color: Colors.grey),
+        ),
+      );
+    }
+    switch (shape) {
+      case 'round':
+      case 'oval':
+        return ClipOval(child: imageWidget);
+      case 'square':
+        return ClipRRect(
+            borderRadius: BorderRadius.zero, child: imageWidget);
+      default:
+        return ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: imageWidget);
+    }
+  }
+
+  Widget _buildPhoto(String photoUrl) {
+    final shape = widget.imageShape ?? 'rectangle';
+    Widget content;
+    if (_isUploading) {
+      content = const SizedBox(
+        height: 60,
+        width: 60,
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    } else if (photoUrl.isNotEmpty) {
+      if (photoUrl.startsWith('/') || photoUrl.startsWith('file://')) {
+        content = Image.file(File(photoUrl),
+            height: 60, width: 60, fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _placeholder());
+      } else {
+        content = CachedNetworkImage(
+            imageUrl: photoUrl,
+            height: 60, width: 60, fit: BoxFit.cover,
+            errorWidget: (_, __, ___) => _placeholder(),
+            placeholder: (_, __) => _placeholder());
+      }
+    } else {
+      content = _placeholder();
+    }
+    switch (shape) {
+      case 'round':
+      case 'oval':
+        return ClipOval(
+            child: SizedBox(width: 60, height: 60, child: content));
+      case 'square':
+        return ClipRRect(
+          borderRadius: BorderRadius.zero,
+          child: SizedBox(width: 60, height: 60, child: content),
+        );
+      default:
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: SizedBox(width: 60, height: 60, child: content),
+        );
+    }
+  }
+
+  Widget _placeholder() => Container(
+    height: 60,
+    width: 60,
+    color: Colors.grey.shade200,
+    child: const Icon(Icons.person, color: Colors.grey),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.item.student;
+    final className = s?.studentClass?.nameWithPrefix ?? '';
+    final sectionName = s?.section?.name ?? '';
+    final fatherPhone = s?.fatherPhone ?? '';
+    final photoUrl = _currentPhotoUrl ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: widget.isSelected
+            ? AppTheme.btnColor.withOpacity(0.06)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: widget.isSelected
+              ? AppTheme.btnColor
+              : Colors.transparent,
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: widget.onToggle,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(0, 0, 8, 0),
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: Checkbox(
+                  value: widget.isSelected,
+                  onChanged: (_) => widget.onToggle(),
+                  activeColor: AppTheme.btnColor,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4)),
+                  side: BorderSide(color: AppTheme.graySubTitleColor),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => widget.onTapCard?.call(),
+              behavior: HitTestBehavior.opaque,
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      if (photoUrl.isNotEmpty) {
+                        _showImagePreview(photoUrl);
+                      } else {
+                        Future.delayed(Duration.zero, _fromCamera);
+                      }
+                    },
+                    child: Stack(
+                      children: [
+                        _buildPhoto(photoUrl),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            height: 22,
+                            width: 22,
+                            decoration: BoxDecoration(
+                              color: Colors.black,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                  color: Colors.white, width: 2),
+                            ),
+                            child: Icon(
+                              photoUrl.isNotEmpty
+                                  ? Icons.preview
+                                  : Icons.camera_alt,
+                              size: 12,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(s?.name ?? '',
+                                  style: MyStyles.boldText(
+                                      size: 16,
+                                      color: AppTheme.black_Color),
+                                  overflow: TextOverflow.ellipsis),
+                            ),
+                            if (className.isNotEmpty) ...[
+                              const SizedBox(width: 5),
+                              Flexible(
+                                child: Text(
+                                  '• $className${sectionName.isNotEmpty ? ' ($sectionName)' : ''}',
+                                  style: MyStyles.boldText(
+                                      size: 14,
+                                      color: AppTheme.btnColor),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        if (fatherPhone.isNotEmpty)
+                          Row(
+                            children: [
+                              const Icon(Icons.phone,
+                                  size: 12, color: Colors.grey),
+                              const SizedBox(width: 4),
+                              Text(fatherPhone,
+                                  style: MyStyles.regularText(
+                                      size: 12,
+                                      color: AppTheme.graySubTitleColor)),
+                            ],
+                          ),
+                        if ((s?.fatherName ?? '').isNotEmpty)
+                          Text('F: ${s!.fatherName}',
+                              style: MyStyles.regularText(
+                                  size: 12,
+                                  color: AppTheme.graySubTitleColor)),
+                        if ((s?.motherName ?? '').isNotEmpty)
+                          Text('M: ${s!.motherName}',
+                              style: MyStyles.regularText(
+                                  size: 12,
+                                  color: AppTheme.graySubTitleColor)),
+                        if ((s?.address ?? '').isNotEmpty)
+                          Text(s!.address!,
+                              style: MyStyles.regularText(
+                                  size: 11,
+                                  color: AppTheme.graySubTitleColor),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// ORDERS TAB
+// ─────────────────────────────────────────────────────────────
+
+class _OrdersTab extends StatefulWidget {
+  final String schoolId;
+  const _OrdersTab({required this.schoolId});
+
+  @override
+  State<_OrdersTab> createState() => _OrdersTabState();
+}
+
+class _OrdersTabState extends State<_OrdersTab> {
+  final TextEditingController _searchCtrl = TextEditingController();
+  final TextEditingController _dateFromCtrl = TextEditingController();
+  final TextEditingController _dateToCtrl = TextEditingController();
+  final ScrollController _scrollCtrl = ScrollController();
+  Timer? _debounce;
+
+  String _selectedStatus = '';
+  String _selectedClass = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollCtrl.addListener(() {
+      if (_scrollCtrl.position.pixels >=
+          _scrollCtrl.position.maxScrollExtent - 200) {
+        context.read<OrdersCubit>().fetchSchoolOrders(
+          isLoadMore: true,
+          search: _searchCtrl.text.trim(),
+          status: _selectedStatus,
+          classFilter: _selectedClass,
+          schoolId: widget.schoolId,
+          dateFrom: _dateFromCtrl.text,
+          dateTo: _dateToCtrl.text,
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _dateFromCtrl.dispose();
+    _dateToCtrl.dispose();
+    _scrollCtrl.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _resetAndFetch() {
+    context.read<OrdersCubit>().fetchSchoolOrders(
+      search: _searchCtrl.text.trim(),
+      status: _selectedStatus,
+      classFilter: _selectedClass,
+      schoolId: widget.schoolId,
+      dateFrom: _dateFromCtrl.text,
+      dateTo: _dateToCtrl.text,
+    );
+  }
+
+  bool get _hasActiveFilters =>
+      _selectedStatus.isNotEmpty ||
+          _selectedClass.isNotEmpty ||
+          _dateFromCtrl.text.isNotEmpty ||
+          _dateToCtrl.text.isNotEmpty;
+
+  void _clearFilters() {
+    setState(() {
+      _selectedStatus = '';
+      _selectedClass = '';
+      _dateFromCtrl.clear();
+      _dateToCtrl.clear();
+    });
+    _resetAndFetch();
+  }
+
+  Future<void> _showChangeStatusDialog(
+      BuildContext ctx, List<String> uuids) async {
+    String? selectedStatus;
+    String issueNote = '';
+    bool confirming = false;
+
+    await showDialog(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) => Dialog(
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text('Change Order Status',
+                          style: MyStyles.boldText(
+                              size: 18, color: AppTheme.black_Color)),
+                    ),
+                    GestureDetector(
+                      onTap: confirming
+                          ? null
+                          : () => Navigator.pop(dialogCtx),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(colors: [
+                            Color(0xFFFF6B6B),
+                            Color(0xFFFF8E53)
+                          ]),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.close,
+                            color: Colors.white, size: 18),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text('Select new status',
+                    style: MyStyles.regularText(
+                        size: 13, color: AppTheme.graySubTitleColor)),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: selectedStatus != null
+                          ? AppTheme.btnColor
+                          : Colors.grey.shade300,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: selectedStatus,
+                      isExpanded: true,
+                      hint: Text('-- Select Status --',
+                          style: MyStyles.regularText(
+                              size: 13,
+                              color: AppTheme.graySubTitleColor)),
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                          color: AppTheme.graySubTitleColor),
+                      items: [
+                        DropdownMenuItem<String>(
+                          value: null,
+                          child: Text('-- Select Status --',
+                              style: MyStyles.regularText(
+                                  size: 13,
+                                  color: AppTheme.graySubTitleColor)),
+                        ),
+                        DropdownMenuItem<String>(
+                          value: 'delivery_verified',
+                          child: Text('Delivery Verified',
+                              style: MyStyles.regularText(
+                                  size: 13, color: AppTheme.black_Color)),
+                        ),
+                        DropdownMenuItem<String>(
+                          value: 'printing_issue',
+                          child: Text('Printing Issue',
+                              style: MyStyles.regularText(
+                                  size: 13, color: AppTheme.black_Color)),
+                        ),
+                      ],
+                      onChanged: confirming
+                          ? null
+                          : (v) =>
+                          setDialogState(() => selectedStatus = v),
+                    ),
+                  ),
+                ),
+                if (selectedStatus == 'printing_issue') ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    style: MyStyles.regularText(
+                        size: 13, color: AppTheme.black_Color),
+                    onChanged: (v) => issueNote = v,
+                    decoration: InputDecoration(
+                      hintText: 'Issue note (e.g. Card photo blur)',
+                      hintStyle: MyStyles.regularText(
+                          size: 13, color: AppTheme.graySubTitleColor),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide:
+                        BorderSide(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide:
+                        const BorderSide(color: AppTheme.btnColor),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: confirming
+                          ? null
+                          : () => Navigator.pop(dialogCtx),
+                      style: TextButton.styleFrom(
+                        backgroundColor: AppTheme.lightRedColor,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 10),
+                      ),
+                      child: Text('Cancel',
+                          style: MyStyles.mediumText(
+                              size: 13,
+                              color: AppTheme.cancelTextColor)),
+                    ),
+                    const SizedBox(width: 10),
+                    ElevatedButton(
+                      onPressed:
+                      (selectedStatus == null || confirming)
+                          ? null
+                          : () async {
+                        setDialogState(
+                                () => confirming = true);
+                        final success = await ctx
+                            .read<OrdersCubit>()
+                            .bulkUpdateOrderStatus(
+                          schoolId: widget.schoolId,
+                          uuids: uuids,
+                          status: selectedStatus!,
+                          issueNote: issueNote,
+                        );
+                        if (dialogCtx.mounted)
+                          Navigator.pop(dialogCtx);
+                        if (ctx.mounted) {
+                          ctx
+                              .read<OrdersCubit>()
+                              .clearOrderSelection();
+                          ScaffoldMessenger.of(ctx)
+                              .showSnackBar(SnackBar(
+                            content: Text(success
+                                ? 'Status updated successfully'
+                                : 'Failed to update status'),
+                            backgroundColor: success
+                                ? AppTheme.btnColor
+                                : Colors.red,
+                            behavior:
+                            SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(
+                                borderRadius:
+                                BorderRadius.circular(10)),
+                            margin: const EdgeInsets.all(12),
+                          ));
+                          if (success) _resetAndFetch();
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6C63FF),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 10),
+                      ),
+                      child: confirming
+                          ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white),
+                      )
+                          : Text('Confirm',
+                          style: MyStyles.mediumText(
+                              size: 13, color: Colors.white)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        BlocBuilder<OrdersCubit, OrdersState>(
+          buildWhen: (p, c) => p.total != c.total,
+          builder: (_, s) =>
+              _CountBanner(total: s.total, label: 'Total Orders'),
+        ),
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: _searchBar(),
+        ),
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Column(
+            children: [
+              const Divider(height: 1, color: AppTheme.LineColor),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(child: _classDropdown()),
+                  const SizedBox(width: 8),
+                  Expanded(child: _statusDropdown()),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                      child: _dateField(_dateFromCtrl, 'From dd-mm-yyyy')),
+                  const SizedBox(width: 8),
+                  Expanded(
+                      child: _dateField(_dateToCtrl, 'To dd-mm-yyyy')),
+                ],
+              ),
+              if (_hasActiveFilters) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: GestureDetector(
+                    onTap: _clearFilters,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppTheme.lightRedColor,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.close,
+                              size: 12,
+                              color: AppTheme.cancelTextColor),
+                          const SizedBox(width: 4),
+                          Text('Clear Filters',
+                              style: MyStyles.mediumText(
+                                  size: 11,
+                                  color: AppTheme.cancelTextColor)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        Expanded(
+          child: BlocBuilder<OrdersCubit, OrdersState>(
+            builder: (_, state) {
+              if (state.loading && state.ordersList.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: OrderListShimmer(),
+                );
+              }
+              if (state.error != null && state.ordersList.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.error_outline,
+                          size: 48, color: Colors.red.shade300),
+                      const SizedBox(height: 12),
+                      Text(state.error!,
+                          style: MyStyles.regularText(
+                              size: 14, color: Colors.red)),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: _resetAndFetch,
+                        icon: const Icon(Icons.refresh, size: 16),
+                        label: const Text('Retry'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.btnColor,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              if (state.ordersList.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Image.asset('assets/images/no_data.png',
+                          height: 160),
+                      const SizedBox(height: 12),
+                      Text('No orders found',
+                          style: MyStyles.mediumText(
+                              size: 14,
+                              color: AppTheme.graySubTitleColor)),
+                      if (_hasActiveFilters) ...[
+                        const SizedBox(height: 8),
+                        TextButton(
+                          onPressed: _clearFilters,
+                          child: Text('Clear filters',
+                              style: MyStyles.mediumText(
+                                  size: 13, color: AppTheme.btnColor)),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              }
+
+              return RefreshIndicator(
+                color: AppTheme.btnColor,
+                onRefresh: () async => _resetAndFetch(),
+                child: Column(
+                  children: [
+                    if (state.selectedOrderUuids.isNotEmpty)
+                      Container(
+                        color: AppTheme.btnColor.withOpacity(0.08),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        child: Row(
+                          children: [
+                            Text(
+                              '${state.selectedOrderUuids.length} selected',
+                              style: MyStyles.mediumText(
+                                  size: 13, color: AppTheme.btnColor),
+                            ),
+                            const Spacer(),
+                            GestureDetector(
+                              onTap: () => context
+                                  .read<OrdersCubit>()
+                                  .selectAllOrders(),
+                              child: Text('Select All',
+                                  style: MyStyles.mediumText(
+                                      size: 12,
+                                      color: AppTheme.btnColor)),
+                            ),
+                            const SizedBox(width: 12),
+                            GestureDetector(
+                              onTap: () => context
+                                  .read<OrdersCubit>()
+                                  .clearOrderSelection(),
+                              child: Text('Clear',
+                                  style: MyStyles.mediumText(
+                                      size: 12,
+                                      color: AppTheme.cancelTextColor)),
+                            ),
+                            const SizedBox(width: 12),
+                            GestureDetector(
+                              onTap: () => _showChangeStatusDialog(
+                                context,
+                                state.selectedOrderUuids.toList(),
+                              ),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.btnColor,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text('Change Status',
+                                    style: MyStyles.mediumText(
+                                        size: 11, color: Colors.white)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    Expanded(
+                      child: ListView.builder(
+                        controller: _scrollCtrl,
+                        padding:
+                        const EdgeInsets.fromLTRB(16, 12, 16, 20),
+                        itemCount: state.ordersList.length +
+                            (state.hasMore ? 1 : 0),
+                        itemBuilder: (_, i) {
+                          if (i < state.ordersList.length) {
+                            final order = state.ordersList[i];
+                            final isSelected = state.selectedOrderUuids
+                                .contains(order.uuid);
+                            return _OrderCard(
+                              order: order,
+                              schoolId: widget.schoolId,
+                              isSelected: isSelected,
+                              onToggle: () => context
+                                  .read<OrdersCubit>()
+                                  .toggleOrderSelection(order.uuid),
+                            );
+                          }
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 20),
+                            child: Center(
+                                child: CircularProgressIndicator(
+                                    color: AppTheme.btnColor,
+                                    strokeWidth: 2)),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _searchBar() => TextField(
+    controller: _searchCtrl,
+    style:
+    MyStyles.regularText(size: 14, color: AppTheme.black_Color),
+    onChanged: (_) {
+      _debounce?.cancel();
+      _debounce = Timer(
+          const Duration(milliseconds: 500), _resetAndFetch);
+    },
+    decoration: InputDecoration(
+      filled: true,
+      fillColor: AppTheme.appBackgroundColor,
+      contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14, vertical: 12),
+      hintText: 'Search by student name, order ID...',
+      prefixIcon: const Icon(Icons.search_rounded,
+          size: 20, color: AppTheme.graySubTitleColor),
+      suffixIcon: _searchCtrl.text.isNotEmpty
+          ? GestureDetector(
+        onTap: () {
+          _searchCtrl.clear();
+          setState(() {});
+          _resetAndFetch();
+        },
+        child: const Icon(Icons.close,
+            size: 16, color: AppTheme.graySubTitleColor),
+      )
+          : null,
+      enabledBorder: OutlineInputBorder(
+        borderSide: BorderSide(
+            color: AppTheme.backBtnBgColor.withOpacity(0.5)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderSide: const BorderSide(color: AppTheme.btnColor),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      hintStyle: MyStyles.regularText(
+          size: 13, color: AppTheme.graySubTitleColor),
+    ),
+  );
+
+  Widget _classDropdown() => BlocBuilder<OrdersCubit, OrdersState>(
+    buildWhen: (p, c) =>
+    p.schoolClassesWithSections !=
+        c.schoolClassesWithSections ||
+        p.loading != c.loading,
+    builder: (_, state) => _dropdown(
+      value: _selectedClass.isEmpty ? '' : _selectedClass,
+      hint: 'All Classes',
+      items: [
+        const DropdownMenuItem(
+            value: '', child: Text('All Classes')),
+        ...state.schoolClassesWithSections.map(
+              (c) => DropdownMenuItem(
+            value: c.value,
+            child:
+            Text(c.label, overflow: TextOverflow.ellipsis),
+          ),
+        ),
+      ],
+      onChanged: (v) {
+        setState(() => _selectedClass = v ?? '');
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => _resetAndFetch());
+      },
+    ),
+  );
+
+  Widget _statusDropdown() => _dropdown(
+    value: _selectedStatus,
+    hint: 'All Status',
+    items: kOrderFilterStatuses
+        .map((s) => DropdownMenuItem<String>(
+      value: s.value,
+      child: Text(s.label,
+          overflow: TextOverflow.ellipsis),
+    ))
+        .toList(),
+    onChanged: (v) {
+      setState(() => _selectedStatus = v ?? '');
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _resetAndFetch());
+    },
+  );
+
+  Widget _dropdown({
+    required String value,
+    required String hint,
+    required List<DropdownMenuItem<String>> items,
+    required void Function(String?) onChanged,
+    bool loading = false,
+  }) =>
+      Container(
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.appBackgroundColor,
+          border: Border.all(
+              color: AppTheme.backBtnBgColor.withOpacity(0.5)),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: value,
+            isExpanded: true,
+            menuMaxHeight: 300,
+            icon: loading
+                ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: AppTheme.btnColor),
+            )
+                : const Icon(Icons.keyboard_arrow_down_rounded,
+                size: 18, color: AppTheme.graySubTitleColor),
+            style: MyStyles.regularText(
+                size: 13, color: AppTheme.black_Color),
+            items: items,
+            onChanged: onChanged,
+          ),
+        ),
+      );
+
+  Widget _dateField(TextEditingController ctrl, String hint) {
+    return StatefulBuilder(
+      builder: (context, setLocal) => AppTextField(
+        controller: ctrl,
+        hintText: hint,
+        keyboardType: TextInputType.number,
+        inputFormatters: [
+          FilteringTextInputFormatter.allow(RegExp(r'[\d.\-/]')),
+          LengthLimitingTextInputFormatter(10),
+          _DotDateFormatter(),
+        ],
+        suffixIcon: ctrl.text.isNotEmpty
+            ? GestureDetector(
+          onTap: () {
+            ctrl.clear();
+            setLocal(() {});
+            _debounce?.cancel();
+            _debounce = Timer(
+                const Duration(milliseconds: 200), _resetAndFetch);
+          },
+          child: const Icon(Icons.close, size: 16),
+        )
+            : null,
+        onChanged: (_) {
+          setLocal(() {});
+          if (ctrl.text.length == 10 || ctrl.text.isEmpty) {
+            _debounce?.cancel();
+            _debounce = Timer(
+                const Duration(milliseconds: 400), _resetAndFetch);
+          }
+        },
+      ),
+    );
+  }
+}
+
+
+class _OrderCard extends StatefulWidget {
+  final OrderModel order;
+  final String schoolId;
+  final bool isSelected;
+  final VoidCallback? onToggle;
+
+  const _OrderCard({
+    required this.order,
+    this.schoolId = '',
+    this.isSelected = false,
+    this.onToggle,
+  });
+
+  @override
+  State<_OrderCard> createState() => _OrderCardState();
+}
+
+class _OrderCardState extends State<_OrderCard> {
+  late String _currentStatus;
+  bool _updating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentStatus = widget.order.status;
+  }
+
+  Color get _statusColor {
+    switch (_currentStatus) {
+      case 'completed': return const Color(0xFF2DC24E);
+      case 'cancelled': return AppTheme.cancelTextColor;
+      case 'work_in_process': return AppTheme.btnColor;
+      case 're_order': return AppTheme.PendingDotColor;
+      default: return AppTheme.graySubTitleColor;
+    }
+  }
+
+  Color get _statusBg {
+    switch (_currentStatus) {
+      case 'completed': return const Color(0xFFE8F9ED);
+      case 'cancelled': return AppTheme.lightRedColor;
+      case 'work_in_process': return AppTheme.lightBlueColor;
+      case 're_order': return AppTheme.PendingLightColor;
+      default: return AppTheme.appBackgroundColor;
+    }
+  }
+
+  String get _statusLabel => kOrderStatuses
+      .firstWhere(
+        (s) => s.value == _currentStatus,
+    orElse: () => OrderStatusOption(
+        _currentStatus, _currentStatus.replaceAll('_', ' ')),
+  )
+      .label;
+
+  Future<void> _updateStatus(String newStatus) async {
+    if (newStatus != 're_order') return;
+    setState(() => _updating = true);
+    final success = await context
+        .read<OrdersCubit>()
+        .reOrderWithPrintingIssue(
+      schoolId: widget.schoolId,
+      uuids: [widget.order.uuid],
+    );
+    if (mounted) {
+      setState(() {
+        _updating = false;
+        if (success) _currentStatus = 're_order';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(success
+            ? 'Re-order submitted successfully'
+            : 'Failed to submit re-order'),
+        backgroundColor: success ? AppTheme.btnColor : Colors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(12),
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final student = widget.order.student;
+    final school = widget.order.school;
+
+    return GestureDetector(
+      onTap: () {},
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: widget.isSelected
+              ? AppTheme.btnColor.withOpacity(0.06)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: widget.isSelected
+                ? AppTheme.btnColor
+                : Colors.transparent,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 18, right: 10),
+              child: GestureDetector(
+                onTap: widget.onToggle,
+                child: Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: widget.isSelected
+                        ? AppTheme.btnColor
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: widget.isSelected
+                          ? AppTheme.btnColor
+                          : Colors.grey.shade400,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: widget.isSelected
+                      ? const Icon(Icons.check,
+                      size: 12, color: Colors.white)
+                      : null,
+                ),
+              ),
+            ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: (student?.profilePhotoUrl != null &&
+                  student!.profilePhotoUrl!.isNotEmpty)
+                  ? Image.network(
+                student.profilePhotoUrl!,
+                height: 60,
+                width: 60,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _placeholder(),
+              )
+                  : _placeholder(),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(student?.name ?? '-',
+                            style: MyStyles.boldText(
+                                size: 14, color: AppTheme.black_Color),
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                      if (student?.className != null) ...[
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text('• ${student!.className!}',
+                              style: MyStyles.boldText(
+                                  size: 12, color: AppTheme.btnColor),
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  if (school?.name != null)
+                    Text(school!.name,
+                        style: MyStyles.regularText(
+                            size: 10,
+                            color: AppTheme.graySubTitleColor),
+                        overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: _statusBg,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 4,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                  color: _statusColor,
+                                  shape: BoxShape.circle),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(_statusLabel,
+                                style: MyStyles.mediumText(
+                                    size: 8, color: _statusColor)),
+                          ],
+                        ),
+                      ),
+                      const Spacer(),
+                      Icon(Icons.calendar_today_outlined,
+                          size: 10,
+                          color: AppTheme.graySubTitleColor),
+                      const SizedBox(width: 3),
+                      Text(widget.order.formattedOrderedAt,
+                          style: MyStyles.regularText(
+                              size: 10,
+                              color: AppTheme.graySubTitleColor)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            _updating
+                ? const Padding(
+              padding: EdgeInsets.all(4),
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppTheme.btnColor),
+              ),
+            )
+                : PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: Colors.grey),
+              offset: const Offset(0, 32),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              elevation: 8,
+              onSelected: _updateStatus,
+              itemBuilder: (_) => [
+                PopupMenuItem<String>(
+                  value: 're_order',
+                  child: Row(
+                    children: [
+                      Icon(Icons.refresh_rounded,
+                          size: 16,
+                          color: AppTheme.graySubTitleColor),
+                      const SizedBox(width: 10),
+                      const Text('Re-Order'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _placeholder() => Container(
+    height: 60,
+    width: 60,
+    color: Colors.grey.shade300,
+    child: const Icon(Icons.person, color: Colors.grey),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// DIALOGS
+// ─────────────────────────────────────────────────────────────
+
+class _CreateOrderDialog extends StatefulWidget {
+  final String schoolId;
+  const _CreateOrderDialog({required this.schoolId});
+
+  @override
+  State<_CreateOrderDialog> createState() => _CreateOrderDialogState();
+}
+
+class _CreateOrderDialogState extends State<_CreateOrderDialog> {
+  static const _cardTypes = [
+    {'value': '', 'label': '-Select card Type-'},
+    {'value': 'pvc_card', 'label': 'Pvc Card'},
+    {'value': 'rfid_card', 'label': 'RFID Card'},
+    {'value': 'pasting_card', 'label': 'Pasting card'},
+    {'value': 'acrylic_card', 'label': 'Acrylic Card'},
+    {'value': 'nfc_card', 'label': 'NFC Card'},
+    {'value': 'my_fair_card', 'label': 'My Fair Card'},
+  ];
+
+  static const _cardForOptions = [
+    {'value': 'student_card', 'label': 'Student Card'},
+    {'value': 'parent_card', 'label': 'Parent Card'},
+    {'value': 'admit_card', 'label': 'Admit Card'},
+  ];
+
+  String _selectedCardType = '';
+  final Set<String> _selectedCardFor = {'student_card', 'parent_card'};
+
+  void _toggleCardFor(String value) {
+    setState(() {
+      if (_selectedCardFor.contains(value)) {
+        _selectedCardFor.remove(value);
+      } else {
+        _selectedCardFor.add(value);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocConsumer<CorrectionCubit, CorrectionState>(
+      listenWhen: (p, c) =>
+      p.createOrderLoading != c.createOrderLoading ||
+          p.createOrderSuccess != c.createOrderSuccess ||
+          p.createOrderError != c.createOrderError,
+      listener: (ctx, state) {
+        if (!state.createOrderLoading && state.createOrderSuccess) {
+          Navigator.of(context).pop();
+          ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+            content: const Text('Order created successfully!'),
+            backgroundColor: AppTheme.btnColor,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+            margin: const EdgeInsets.all(12),
+          ));
+        }
+        if (!state.createOrderLoading && state.createOrderError != null) {
+          Navigator.of(context).pop();
+          ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+            content: Text(state.createOrderError!),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+            margin: const EdgeInsets.all(12),
+          ));
+        }
+      },
+      builder: (context, state) => Dialog(
+        shape:
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text('Create Order',
+                      style: MyStyles.boldText(
+                          size: 18, color: AppTheme.black_Color)),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: state.createOrderLoading
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [
+                          Color(0xFFFF6B6B),
+                          Color(0xFFFF8E53)
+                        ]),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.close,
+                          color: Colors.white, size: 18),
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(height: 24),
+              Text('Create Card Order For',
+                  style: MyStyles.mediumText(
+                      size: 13, color: AppTheme.black_Color)),
+              const SizedBox(height: 8),
+              Container(
+                height: 48,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _selectedCardType,
+                    isExpanded: true,
+                    icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                        color: AppTheme.graySubTitleColor),
+                    style: MyStyles.regularText(
+                        size: 14, color: AppTheme.black_Color),
+                    items: _cardTypes
+                        .map((t) => DropdownMenuItem<String>(
+                      value: t['value']!,
+                      child: Text(t['label']!,
+                          style: MyStyles.regularText(
+                            size: 14,
+                            color: t['value']!.isEmpty
+                                ? AppTheme.graySubTitleColor
+                                : AppTheme.black_Color,
+                          )),
+                    ))
+                        .toList(),
+                    onChanged: (v) =>
+                        setState(() => _selectedCardType = v ?? ''),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ..._cardForOptions.map((opt) {
+                final isSelected =
+                _selectedCardFor.contains(opt['value']);
+                return GestureDetector(
+                  onTap: () => _toggleCardFor(opt['value']!),
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 22,
+                          height: 22,
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? AppTheme.btnColor
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(5),
+                            border: Border.all(
+                              color: isSelected
+                                  ? AppTheme.btnColor
+                                  : Colors.grey.shade400,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: isSelected
+                              ? const Icon(Icons.check,
+                              size: 14, color: Colors.white)
+                              : null,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(opt['label']!,
+                            style: MyStyles.regularText(
+                                size: 14, color: AppTheme.black_Color)),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  GestureDetector(
+                    onTap: state.createOrderLoading
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF6B6B),
+                        borderRadius: BorderRadius.circular(25),
+                      ),
+                      child: Text('Cancel',
+                          style: MyStyles.mediumText(
+                              size: 14, color: Colors.white)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    onTap: state.createOrderLoading
+                        ? null
+                        : () {
+                      if (_selectedCardType.isEmpty) {
+                        ScaffoldMessenger.of(context)
+                            .showSnackBar(SnackBar(
+                          content: const Text(
+                              'Please select a card type'),
+                          backgroundColor: Colors.orange,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(
+                              borderRadius:
+                              BorderRadius.circular(10)),
+                          margin: const EdgeInsets.all(12),
+                        ));
+                        return;
+                      }
+                      if (_selectedCardFor.isEmpty) {
+                        ScaffoldMessenger.of(context)
+                            .showSnackBar(SnackBar(
+                          content: const Text(
+                              'Please select at least one card for option'),
+                          backgroundColor: Colors.orange,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(
+                              borderRadius:
+                              BorderRadius.circular(10)),
+                          margin: const EdgeInsets.all(12),
+                        ));
+                        return;
+                      }
+                      context.read<CorrectionCubit>().createOrder(
+                        schoolId: widget.schoolId,
+                        cardType: _selectedCardType,
+                        cardFor: _selectedCardFor.toList(),
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: state.createOrderLoading
+                            ? Colors.grey
+                            : const Color(0xFF6C63FF),
+                        borderRadius: BorderRadius.circular(25),
+                      ),
+                      child: state.createOrderLoading
+                          ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                          : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.add_circle_outline,
+                              size: 14, color: Colors.white),
+                          const SizedBox(width: 6),
+                          Text('Create',
+                              style: MyStyles.mediumText(
+                                  size: 14, color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DownloadChecklistDialog extends StatefulWidget {
+  final String schoolId;
+  const _DownloadChecklistDialog({required this.schoolId});
+
+  @override
+  State<_DownloadChecklistDialog> createState() =>
+      _DownloadChecklistDialogState();
+}
+
+class _DownloadChecklistDialogState
+    extends State<_DownloadChecklistDialog> {
+  Set<String> _selectedColumns = {};
+  String _printType = '';
+
+  List<Map<String, String>> _buildPrintTypes(List<CorrectionItem> items) {
+    return [
+      {'value': '', 'label': '-Select Print Type-'},
+      {'value': 'class_wise', 'label': 'Class Wise'},
+      {'value': 'section_wise', 'label': 'Section Wise'},
+    ];
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    context
+        .read<CorrectionCubit>()
+        .fetchDownloadColumns(schoolId: widget.schoolId);
+  }
+
+  void _toggleColumn(String key) {
+    setState(() {
+      if (_selectedColumns.contains(key)) {
+        _selectedColumns.remove(key);
+      } else {
+        _selectedColumns.add(key);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocConsumer<CorrectionCubit, CorrectionState>(
+      listenWhen: (p, c) =>
+      p.downloadLoading != c.downloadLoading ||
+          p.downloadUrl != c.downloadUrl ||
+          p.downloadError != c.downloadError ||
+          (p.columnsLoading && !c.columnsLoading),
+      listener: (ctx, state) async {
+        if (!state.columnsLoading &&
+            state.downloadColumns.isNotEmpty &&
+            _selectedColumns.isEmpty) {
+          setState(() {
+            _selectedColumns =
+                state.downloadColumns.map((c) => c.key).toSet();
+          });
+        }
+        if (!state.downloadLoading && state.downloadError != null) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(state.downloadError!),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              margin: const EdgeInsets.all(12),
+            ));
+          }
+        }
+      },
+      builder: (context, state) => Dialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16)),
+        backgroundColor: Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text('Download Checklist',
+                      style: MyStyles.boldText(
+                          size: 18, color: AppTheme.black_Color)),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [
+                          Color(0xFFFF6B6B),
+                          Color(0xFFFF8E53)
+                        ]),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.close,
+                          color: Colors.white, size: 18),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Select Data You Want to Display in Correction List',
+                style: MyStyles.mediumText(
+                    size: 13, color: AppTheme.graySubTitleColor),
+              ),
+              const SizedBox(height: 16),
+              if (state.columnsLoading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: CircularProgressIndicator(
+                        color: AppTheme.btnColor, strokeWidth: 2),
+                  ),
+                )
+              else if (state.downloadColumns.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text('No columns available',
+                      style: MyStyles.regularText(
+                          size: 13,
+                          color: AppTheme.graySubTitleColor)),
+                )
+              else
+                GridView.count(
+                  crossAxisCount: 3,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  childAspectRatio: 3.2,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 4,
+                  children: state.downloadColumns.map((col) {
+                    final isSelected =
+                    _selectedColumns.contains(col.key);
+                    return GestureDetector(
+                      onTap: () => _toggleColumn(col.key),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppTheme.btnColor
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(5),
+                              border: Border.all(
+                                color: isSelected
+                                    ? AppTheme.btnColor
+                                    : Colors.grey.shade400,
+                                width: 1.5,
+                              ),
+                            ),
+                            child: isSelected
+                                ? const Icon(Icons.check,
+                                size: 13, color: Colors.white)
+                                : null,
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(col.label,
+                                style: MyStyles.regularText(
+                                    size: 12,
+                                    color: AppTheme.black_Color),
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              const SizedBox(height: 16),
+              Text('Print List Type *',
+                  style: MyStyles.mediumText(
+                      size: 13, color: AppTheme.black_Color)),
+              const SizedBox(height: 8),
+              Container(
+                height: 48,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _printType,
+                    isExpanded: true,
+                    icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                        color: AppTheme.graySubTitleColor),
+                    style: MyStyles.regularText(
+                        size: 14, color: AppTheme.black_Color),
+                    items: _buildPrintTypes(state.items)
+                        .map((t) => DropdownMenuItem<String>(
+                      value: t['value']!,
+                      child: Text(t['label']!,
+                          style: MyStyles.regularText(
+                              size: 14,
+                              color: AppTheme.black_Color)),
+                    ))
+                        .toList(),
+                    onChanged: (v) =>
+                        setState(() => _printType = v ?? ''),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              BlocBuilder<CorrectionCubit, CorrectionState>(
+                buildWhen: (p, c) =>
+                p.downloadLoading != c.downloadLoading,
+                builder: (ctx, state) => Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    GestureDetector(
+                      onTap: state.downloadLoading
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF6B6B),
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                        child: Text('Cancel',
+                            style: MyStyles.mediumText(
+                                size: 14, color: Colors.white)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: state.downloadLoading
+                          ? null
+                          : () {
+                        if (_printType.isEmpty) {
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(SnackBar(
+                            content: const Text(
+                                'Please select a Print List Type'),
+                            backgroundColor: Colors.orange,
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(
+                                borderRadius:
+                                BorderRadius.circular(10)),
+                            margin: const EdgeInsets.all(12),
+                          ));
+                          return;
+                        }
+                        if (_selectedColumns.isEmpty) {
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(SnackBar(
+                            content: const Text(
+                                'Please select at least one column'),
+                            backgroundColor: Colors.orange,
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(
+                                borderRadius:
+                                BorderRadius.circular(10)),
+                            margin: const EdgeInsets.all(12),
+                          ));
+                          return;
+                        }
+                        ctx
+                            .read<CorrectionCubit>()
+                            .downloadCorrectionList(
+                          schoolId: widget.schoolId,
+                          selected:
+                          _selectedColumns.toList(),
+                          listType: _printType,
+                        )
+                            .then((pdfBytes) async {
+                          if (pdfBytes != null &&
+                              pdfBytes.isNotEmpty) {
+                            if (context.mounted) {
+                              Navigator.of(context).pop();
+                            }
+                            await Printing.layoutPdf(
+                              onLayout: (_) async => pdfBytes,
+                            );
+                          }
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: state.downloadLoading
+                              ? Colors.grey
+                              : const Color(0xFF6C63FF),
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                        child: state.downloadLoading
+                            ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white),
+                        )
+                            : Text('Confirm',
+                            style: MyStyles.mediumText(
+                                size: 14, color: Colors.white)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProcessChecklistDialog extends StatefulWidget {
+  final String schoolId;
+  final List<String> studentUuids;
+  final VoidCallback? onSuccess;
+
+  const _ProcessChecklistDialog({
+    required this.schoolId,
+    required this.studentUuids,
+    this.onSuccess,
+  });
+
+  @override
+  State<_ProcessChecklistDialog> createState() =>
+      _ProcessChecklistDialogState();
+}
+
+class _ProcessChecklistDialogState
+    extends State<_ProcessChecklistDialog> {
+  static const _listTypes = [
+    {'value': '', 'label': '- Select List Type -'},
+    {'value': 'selected_class_wise', 'label': 'Selected Data - Class Wise'},
+    {
+      'value': 'selected_section_wise',
+      'label': 'Selected Data - Section Wise'
+    },
+    {
+      'value': 'complete_class_wise',
+      'label': 'Complete School Class Wise'
+    },
+    {
+      'value': 'complete_section_wise',
+      'label': 'Complete School Class Sections Wise'
+    },
+  ];
+
+  static const _processTypes = [
+    {'value': '', 'label': '- Select Process Type -'},
+    {'value': 'create', 'label': 'Create Correction List'},
+  ];
+
+  String _selectedListType = '';
+  String _selectedProcessType = '';
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocConsumer<CorrectionCubit, CorrectionState>(
+      listenWhen: (p, c) =>
+      p.sendOrderLoading != c.sendOrderLoading ||
+          p.sendOrderSuccess != c.sendOrderSuccess ||
+          p.sendOrderError != c.sendOrderError,
+      listener: (ctx, state) {
+        if (!state.sendOrderLoading && state.sendOrderSuccess) {
+          Navigator.of(context).pop();
+          widget.onSuccess?.call();
+          ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+            content:
+            Text(state.sendOrderMessage ?? 'Correction list created successfully!'),
+            backgroundColor: AppTheme.btnColor,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+            margin: const EdgeInsets.all(12),
+          ));
+        }
+        if (!state.sendOrderLoading && state.sendOrderError != null) {
+          final isAlready = state.sendOrderError!
+              .toLowerCase()
+              .contains('already processed');
+          if (!isAlready) Navigator.of(context).pop();
+          ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+            content: Text(state.sendOrderError!),
+            backgroundColor:
+            isAlready ? Colors.orange : Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+            margin: const EdgeInsets.all(12),
+          ));
+        }
+      },
+      builder: (context, state) => Dialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16)),
+        backgroundColor: Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text('Process Checklist Or Orders',
+                      style: MyStyles.boldText(
+                          size: 16, color: AppTheme.black_Color)),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: state.sendOrderLoading
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [
+                          Color(0xFFFF6B6B),
+                          Color(0xFFFF8E53)
+                        ]),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.close,
+                          color: Colors.white, size: 18),
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(height: 24),
+              Text('List Type',
+                  style: MyStyles.mediumText(
+                      size: 13, color: AppTheme.black_Color)),
+              const SizedBox(height: 8),
+              Container(
+                height: 48,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: _selectedListType.isNotEmpty
+                        ? AppTheme.btnColor
+                        : Colors.grey.shade300,
+                    width:
+                    _selectedListType.isNotEmpty ? 1.5 : 1,
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _selectedListType,
+                    isExpanded: true,
+                    icon: const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: AppTheme.graySubTitleColor),
+                    style: MyStyles.regularText(
+                        size: 14, color: AppTheme.black_Color),
+                    items: _listTypes
+                        .map((t) => DropdownMenuItem<String>(
+                      value: t['value']!,
+                      child: Text(t['label']!,
+                          style: MyStyles.regularText(
+                            size: 14,
+                            color: t['value']!.isEmpty
+                                ? AppTheme.graySubTitleColor
+                                : AppTheme.black_Color,
+                          )),
+                    ))
+                        .toList(),
+                    onChanged: (v) => setState(
+                            () => _selectedListType = v ?? ''),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text('Select Process Type',
+                  style: MyStyles.mediumText(
+                      size: 13, color: AppTheme.black_Color)),
+              const SizedBox(height: 8),
+              Container(
+                height: 48,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: _selectedProcessType.isNotEmpty
+                        ? AppTheme.btnColor
+                        : Colors.grey.shade300,
+                    width: _selectedProcessType.isNotEmpty ? 1.5 : 1,
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _selectedProcessType,
+                    isExpanded: true,
+                    icon: const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: AppTheme.graySubTitleColor),
+                    style: MyStyles.regularText(
+                        size: 14, color: AppTheme.black_Color),
+                    items: _processTypes
+                        .map((t) => DropdownMenuItem<String>(
+                      value: t['value']!,
+                      child: Text(t['label']!,
+                          style: MyStyles.regularText(
+                            size: 14,
+                            color: t['value']!.isEmpty
+                                ? AppTheme.graySubTitleColor
+                                : AppTheme.black_Color,
+                          )),
+                    ))
+                        .toList(),
+                    onChanged: (v) => setState(
+                            () => _selectedProcessType = v ?? ''),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  GestureDetector(
+                    onTap: state.sendOrderLoading
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 11),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF6B6B),
+                        borderRadius: BorderRadius.circular(25),
+                      ),
+                      child: Text('Cancel',
+                          style: MyStyles.mediumText(
+                              size: 14, color: Colors.white)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    onTap: state.sendOrderLoading
+                        ? null
+                        : () {
+                      if (_selectedListType.isEmpty) {
+                        ScaffoldMessenger.of(context)
+                            .showSnackBar(SnackBar(
+                          content: const Text(
+                              'Please select a list type'),
+                          backgroundColor: Colors.orange,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(
+                              borderRadius:
+                              BorderRadius.circular(10)),
+                          margin: const EdgeInsets.all(12),
+                        ));
+                        return;
+                      }
+                      if (_selectedProcessType.isEmpty) {
+                        ScaffoldMessenger.of(context)
+                            .showSnackBar(SnackBar(
+                          content: const Text(
+                              'Please select a process type'),
+                          backgroundColor: Colors.orange,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(
+                              borderRadius:
+                              BorderRadius.circular(10)),
+                          margin: const EdgeInsets.all(12),
+                        ));
+                        return;
+                      }
+                      context
+                          .read<CorrectionCubit>()
+                          .processOrder(
+                        schoolId: widget.schoolId,
+                        processType: _selectedProcessType,
+                        listType: _selectedListType,
+                        studentUuids: widget.studentUuids,
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 11),
+                      decoration: BoxDecoration(
+                        color: state.sendOrderLoading
+                            ? Colors.grey
+                            : AppTheme.btnColor,
+                        borderRadius: BorderRadius.circular(25),
+                      ),
+                      child: state.sendOrderLoading
+                          ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white),
+                      )
+                          : Text('Confirm',
+                          style: MyStyles.mediumText(
+                              size: 14, color: Colors.white)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────
+
+Widget _buildShapedPreview(String imageUrl, String shape) {
+  final imageWidget = Image.network(
+    imageUrl,
+    width: double.infinity,
+    fit: BoxFit.contain,
+    loadingBuilder: (_, child, progress) => progress == null
+        ? child
+        : const SizedBox(
+        height: 300,
+        child: Center(child: CircularProgressIndicator())),
+    errorBuilder: (_, __, ___) => Container(
+      height: 300,
+      width: double.infinity,
+      color: Colors.grey.shade300,
+      child: const Icon(Icons.person, size: 80, color: Colors.grey),
+    ),
+  );
+  switch (shape) {
+    case 'round':
+    case 'oval':
+      return ClipOval(child: imageWidget);
+    case 'square':
+      return ClipRRect(
+          borderRadius: BorderRadius.zero, child: imageWidget);
+    default:
+      return ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: imageWidget);
+  }
+}
+
+class _DotDateFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    final text =
+    newValue.text.replaceAll('/', '-').replaceAll('.', '-');
+    return newValue.copyWith(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length));
+  }
+}

@@ -125,36 +125,36 @@ class ShimmerDetail extends StatelessWidget {
   final bool showAvatar;
 
   Widget _section(int rows) => Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+    margin: const EdgeInsets.only(bottom: 12),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: shimmerBox(height: 14, width: 120),
         ),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: shimmerBox(height: 14, width: 120),
-            ),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                children: List.generate(rows, (i) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      shimmerBox(width: 100, height: 12),
-                      shimmerBox(width: 120, height: 12),
-                    ],
-                  ),
-                )),
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            children: List.generate(rows, (i) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  shimmerBox(width: 100, height: 12),
+                  shimmerBox(width: 120, height: 12),
+                ],
               ),
-            ),
-          ],
+            )),
+          ),
         ),
-      );
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -204,24 +204,24 @@ class ShimmerGrid extends StatelessWidget {
   final double childAspectRatio;
 
   Widget _card() => Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8)],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            shimmerBox(width: 40, height: 40, radius: 10),
-            const SizedBox(height: 10),
-            shimmerBox(width: 80, height: 14),
-            const SizedBox(height: 6),
-            shimmerBox(width: 50, height: 18),
-          ],
-        ),
-      );
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8)],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        shimmerBox(width: 40, height: 40, radius: 10),
+        const SizedBox(height: 10),
+        shimmerBox(width: 80, height: 14),
+        const SizedBox(height: 6),
+        shimmerBox(width: 50, height: 18),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -303,12 +303,12 @@ class OrderListShimmer extends StatelessWidget {
   const OrderListShimmer({super.key});
   @override
   Widget build(BuildContext context) => ShimmerList(
-        itemCount: 6,
-        avatarSize: 56,
-        isCircle: false,
-        lineCount: 3,
-        expanded: false,
-      );
+    itemCount: 6,
+    avatarSize: 56,
+    isCircle: false,
+    lineCount: 3,
+    expanded: false,
+  );
 }
 typedef OrderDetailShimmer = ShimmerDetail;
 typedef StudentProfileShimmer = ShimmerDetail;
@@ -316,3 +316,324 @@ typedef StudentFormShimmer = ShimmerForm;
 typedef AddStudentFormShimmer = ShimmerForm;
 typedef ProfileHeaderShimmer = ShimmerProfileHeader;
 typedef DashboardAppBarShimmer = ShimmerAppBar;
+
+class HolidayListShimmer extends StatelessWidget {
+  const HolidayListShimmer({super.key, this.itemCount = 6});
+  final int itemCount;
+
+  Widget _card() => Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        shimmerBox(width: 46, height: 56, radius: 10),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: shimmerBox(height: 16)),
+                  const SizedBox(width: 8),
+                  shimmerBox(width: 60, height: 14, radius: 20),
+                ],
+              ),
+              const SizedBox(height: 8),
+              shimmerBox(height: 12, width: 200),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  shimmerBox(width: 110, height: 22, radius: 20),
+                  const SizedBox(width: 6),
+                  shimmerBox(width: 110, height: 22, radius: 20),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        shimmerBox(width: 20, height: 20, radius: 4),
+      ],
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) => ListView.builder(
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+    itemCount: itemCount,
+    itemBuilder: (_, __) => _card(),
+  );
+}
+
+class HolidayCalendarShimmer extends StatelessWidget {
+  const HolidayCalendarShimmer({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: [
+          // Calendar card
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    shimmerBox(width: 32, height: 32, radius: 8),
+                    const SizedBox(width: 10),
+                    shimmerBox(width: 120, height: 16),
+                    const Spacer(),
+                    shimmerBox(width: 60, height: 28, radius: 8),
+                    const SizedBox(width: 10),
+                    shimmerBox(width: 32, height: 32, radius: 8),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Day headers
+                Row(
+                  children: List.generate(7, (_) => Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: shimmerBox(height: 12),
+                    ),
+                  )),
+                ),
+                const SizedBox(height: 8),
+                // Grid cells
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 7,
+                    childAspectRatio: 0.95,
+                  ),
+                  itemCount: 35,
+                  itemBuilder: (_, __) => Padding(
+                    padding: const EdgeInsets.all(2),
+                    child: shimmerBox(height: double.infinity, radius: 8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Summary panel
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                shimmerBox(width: 140, height: 16),
+                const SizedBox(height: 12),
+                ...List.generate(3, (_) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    children: [
+                      shimmerBox(width: 10, height: 10, radius: 5),
+                      const SizedBox(width: 8),
+                      Expanded(child: shimmerBox(height: 12)),
+                      const SizedBox(width: 8),
+                      shimmerBox(width: 60, height: 12),
+                    ],
+                  ),
+                )),
+                const Divider(height: 20),
+                Row(
+                  children: List.generate(4, (i) => Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(right: i < 3 ? 8 : 0),
+                      child: shimmerBox(height: 48, radius: 10),
+                    ),
+                  )),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+}
+
+class StaffOrderListShimmer extends StatelessWidget {
+  StaffOrderListShimmer({super.key, this.itemCount = 6});
+  final int itemCount;
+
+  Widget _card() => Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        shimmerBox(width: 60, height: 60, radius: 6),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: shimmerBox(height: 14)),
+                  const SizedBox(width: 8),
+                  shimmerBox(width: 80, height: 14),
+                ],
+              ),
+              const SizedBox(height: 8),
+              shimmerBox(height: 12, width: 140),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  shimmerBox(width: 80, height: 20, radius: 20),
+                  const Spacer(),
+                  shimmerBox(width: 70, height: 12),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        shimmerBox(width: 20, height: 20, radius: 4),
+      ],
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) => ListView.builder(
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+    itemCount: itemCount,
+    itemBuilder: (_, __) => _card(),
+  );
+}
+
+
+
+class AttendanceStatsShimmer extends StatelessWidget {
+  const AttendanceStatsShimmer({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: List.generate(5, (i) => Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(right: i < 4 ? 8 : 0),
+            child: Column(
+              children: [
+                shimmerBox(height: 18, width: 36),
+                const SizedBox(height: 5),
+                shimmerBox(height: 10, width: 44),
+              ],
+            ),
+          ),
+        )),
+      ),
+    );
+  }
+}
+
+class AttendanceCardShimmer extends StatelessWidget {
+  const AttendanceCardShimmer({super.key, this.itemCount = 8});
+  final int itemCount;
+
+  Widget _card() => Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Row(
+      children: [
+        // avatar circle
+        shimmerBox(width: 52, height: 52, radius: 26),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // name + roll row
+              Row(
+                children: [
+                  Expanded(child: shimmerBox(height: 14)),
+                  const SizedBox(width: 8),
+                  shimmerBox(width: 50, height: 13),
+                ],
+              ),
+              const SizedBox(height: 7),
+              shimmerBox(height: 11, width: 160), // father name
+              const SizedBox(height: 5),
+              shimmerBox(height: 11, width: 140), // mother name
+              const SizedBox(height: 7),
+              shimmerBox(width: 70, height: 22, radius: 20), // status badge
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        // toggle pill
+        shimmerBox(width: 52, height: 28, radius: 20),
+      ],
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        itemCount: itemCount,
+        itemBuilder: (_, __) => _card(),
+      ),
+    );
+  }
+}
+
+class AttendanceBulkBottomShimmer extends StatelessWidget {
+  const AttendanceBulkBottomShimmer({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 10,
+            offset: const Offset(0, -3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(child: shimmerBox(height: 48, radius: 12)),
+          const SizedBox(width: 12),
+          Expanded(child: shimmerBox(height: 48, radius: 12)),
+        ],
+      ),
+    );
+  }
+}

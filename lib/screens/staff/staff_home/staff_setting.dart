@@ -38,7 +38,7 @@ class _StaffSettingState extends State<StaffSetting> {
               ..loadFromSchoolId(schoolId: schoolId, schoolName: schoolName),
           ),
           BlocProvider(
-            create: (_) => StaffFormCubit()..loadFields(schoolId),
+            create: (_) => StaffFormCubit()..loadFields(schoolId, schoolName: schoolName),
           ),
         ],
         child: StudentForm(

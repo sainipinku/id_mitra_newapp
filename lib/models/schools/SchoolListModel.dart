@@ -338,6 +338,7 @@ class SchoolDetailsModel {
   List<StudentFormField>? studentFormFields;
   List<StudentFormField>? availableStudentFormFields;
   String? sig; // signed URL param for student-form-fields web route
+  String? imageShape; // image_shape from image settings (rectangle, square, round, oval)
 
   SchoolDetailsModel({
     this.id,
@@ -370,6 +371,7 @@ class SchoolDetailsModel {
     this.studentFormFields,
     this.availableStudentFormFields,
     this.sig,
+    this.imageShape,
   });
 
   SchoolDetailsModel copyWith({
@@ -403,6 +405,7 @@ class SchoolDetailsModel {
     List<StudentFormField>? studentFormFields,
     List<StudentFormField>? availableStudentFormFields,
     String? sig,
+    String? imageShape,
   }) =>
       SchoolDetailsModel(
         id: id ?? this.id,
@@ -435,6 +438,7 @@ class SchoolDetailsModel {
         studentFormFields: studentFormFields ?? this.studentFormFields,
         availableStudentFormFields: availableStudentFormFields ?? this.availableStudentFormFields,
         sig: sig ?? this.sig,
+        imageShape: imageShape ?? this.imageShape,
       );
 
   factory SchoolDetailsModel.fromJson(Map<String, dynamic> json) => SchoolDetailsModel(
@@ -474,6 +478,7 @@ class SchoolDetailsModel {
         : List<StudentFormField>.from(
         json["available_student_form_fields"].map((x) => StudentFormField.fromJson(x))),
     sig: json["sig"],
+    imageShape: json["image_shape"]?.toString(),
   );
 
   Map<String, dynamic> toJson() => {
@@ -507,6 +512,8 @@ class SchoolDetailsModel {
     "available_student_form_fields": availableStudentFormFields == null
         ? []
         : List<dynamic>.from(availableStudentFormFields!.map((x) => x.toJson())),
+    "sig": sig,
+    "image_shape": imageShape,
   };
 }
 

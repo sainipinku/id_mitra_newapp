@@ -59,6 +59,20 @@ class OrderModel {
     );
   }
 
+  static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  String get formattedOrderedAt {
+    if (orderedAt.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(orderedAt).toLocal();
+      final day = dt.day.toString().padLeft(2, '0');
+      final month = _months[dt.month - 1];
+      return '$day $month ${dt.year}';
+    } catch (_) {
+      return orderedAt;
+    }
+  }
+
   String get statusLabel {
     return kOrderStatuses
         .firstWhere(
@@ -211,6 +225,8 @@ const kOrderStatuses = [
   OrderStatusOption('work_in_process', 'Work In Process'),
   OrderStatusOption('completed', 'Completed'),
   OrderStatusOption('cancelled', 'Cancelled'),
+  OrderStatusOption('printing_issue', 'Printing Issue'),
+  OrderStatusOption('delivery_verified', 'Delivery Verified'),
 ];
 
 const kOrderFilterStatuses = [
@@ -220,4 +236,6 @@ const kOrderFilterStatuses = [
   OrderStatusOption('work_in_process', 'Work In Process'),
   OrderStatusOption('completed', 'Completed'),
   OrderStatusOption('cancelled', 'Cancelled'),
+  OrderStatusOption('printing_issue', 'Printing Issue'),
+  OrderStatusOption('delivery_verified', 'Delivery Verified'),
 ];

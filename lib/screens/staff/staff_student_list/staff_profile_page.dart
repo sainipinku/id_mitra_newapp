@@ -334,7 +334,6 @@ class _StaffProfileBodyState extends State<_StaffProfileBody> {
     );
   }
 
-  // ── HEADER ── exact same as StudentProfilePage ──────────────────────────
   Widget _headerCard(BuildContext context, StaffDetailModel staff) {
     final isActive = staff.status == 1;
     final photoUrl = _uploadedPhotoUrl ??
@@ -360,7 +359,6 @@ class _StaffProfileBodyState extends State<_StaffProfileBody> {
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
         child: Column(
           children: [
-            // ── Row: avatar + info ──────────────────────────────────────
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -446,7 +444,6 @@ class _StaffProfileBodyState extends State<_StaffProfileBody> {
                   ),
                 ),
                 const SizedBox(width: 16),
-                // ── name + info ─────────────────────────────────────────
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -517,7 +514,6 @@ class _StaffProfileBodyState extends State<_StaffProfileBody> {
               ],
             ),
             const SizedBox(height: 16),
-            // ── chips row + edit button ─────────────────────────────────
             Row(
               children: [
                 _chipWhite(
@@ -607,7 +603,6 @@ class _StaffProfileBodyState extends State<_StaffProfileBody> {
         ),
       );
 
-  // ── SECTION CARD ── exact same as StudentProfilePage ───────────────────
   Widget _sectionCard({
     required IconData icon,
     required String title,
@@ -712,7 +707,6 @@ class _StaffProfileBodyState extends State<_StaffProfileBody> {
         ],
       );
 
-  // ── EMERGENCY CONTACTS ─────────────────────────────────────────────────
   Widget _emergencyContactsCard(StaffDetailModel staff) {
     return Container(
       width: double.infinity,
@@ -806,13 +800,12 @@ class _StaffProfileBodyState extends State<_StaffProfileBody> {
     );
   }
 
-  // ── DATA ROWS ──────────────────────────────────────────────────────────
   List<_Row> _staffRows(StaffDetailModel s) => [
         _Row('Name', s.name),
         _Row('Email', s.email),
         _Row('Phone', s.phone),
         _Row('WhatsApp', s.whatsappPhone ?? ''),
-        _Row('Login ID', s.loginId ?? ''),
+     //   _Row('Login ID', s.loginId ?? ''),
       ].where((r) => r.value.isNotEmpty).toList();
 
   List<_Row> _employmentRows(StaffDetailModel s) => [

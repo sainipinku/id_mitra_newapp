@@ -58,10 +58,11 @@ class _StudentFormState extends State<StudentForm> {
     if (staffState.fields.isEmpty && !staffState.loading) {
       context.read<StaffFormCubit>().loadFields(
         widget.schoolDetailsModel.id?.toString() ?? '',
+        schoolName: widget.schoolDetailsModel.name ?? '',
       );
     }
   }
-  
+
 
   void _openAddFields(
       StateSetter setSheet,
@@ -1121,6 +1122,7 @@ class _StudentFormState extends State<StudentForm> {
                             TextButton(
                               onPressed: () => context.read<StaffFormCubit>().loadFields(
                                 widget.schoolDetailsModel.id?.toString() ?? '',
+                                schoolName: widget.schoolDetailsModel.name ?? '',
                               ),
                               child: const Text('Retry'),
                             ),

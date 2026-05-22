@@ -115,9 +115,7 @@ class MaintenanceService {
           .timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
-        // Parse JSON and check "ok" field
         final body = response.body;
-        // Simple check without dart:convert to keep it lightweight
         serverUp = body.contains('"ok":true') || body.contains('"ok": true');
       }
     } catch (_) {

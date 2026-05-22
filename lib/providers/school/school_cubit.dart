@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:idmitra/api_mamanger/api_manager.dart';
 import 'package:idmitra/api_mamanger/config.dart';
@@ -24,7 +25,6 @@ class SchoolCubit extends Cubit<SchoolState> {
     );
   }
 
-
   Future<void> _saveToLocal(String key, Map<String, dynamic> json) async {
     try {
       final db = await DBHelper.db;
@@ -37,7 +37,7 @@ class SchoolCubit extends Cubit<SchoolState> {
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
-   //   print('SchoolCubit saved to local DB: $key');
+      //   print('SchoolCubit saved to local DB: $key');
     } catch (e) {
       print('SchoolCubit local save error: $e');
     }
@@ -54,15 +54,14 @@ class SchoolCubit extends Cubit<SchoolState> {
       );
       if (rows.isEmpty) return null;
       final data =
-      jsonDecode(rows.first['json_data'] as String) as Map<String, dynamic>;
-   //   print('SchoolCubit loaded from local DB: $key');
+          jsonDecode(rows.first['json_data'] as String) as Map<String, dynamic>;
+      //   print('SchoolCubit loaded from local DB: $key');
       return data;
     } catch (e) {
       print('SchoolCubit local load error: $e');
       return null;
     }
   }
-
 
   String _cacheKey({int page = 1, String search = ''}) =>
       '${_kSchoolsKey}_page_${page}_search_$search';
@@ -130,7 +129,6 @@ class SchoolCubit extends Cubit<SchoolState> {
     );
   }
 
-
   Future<void> _syncFromApi({
     required int page,
     required String search,
@@ -139,6 +137,8 @@ class SchoolCubit extends Cubit<SchoolState> {
     required bool emitStates,
   }) async {
     try {
+      if (!emitStates) emit(state.copyWith(isSyncing: true));
+
       final response = await apiManager.getRequest(
         '${Config.baseUrl}auth/partner/schools?page=$page&search=$search',
       );
@@ -148,9 +148,12 @@ class SchoolCubit extends Cubit<SchoolState> {
         if (emitStates) {
           emit(state.copyWith(
             loading: false,
+            isSyncing: false,
             isPaginationLoading: false,
             error: 'No response from server',
           ));
+        } else {
+          emit(state.copyWith(isSyncing: false));
         }
         return;
       }
@@ -161,9 +164,12 @@ class SchoolCubit extends Cubit<SchoolState> {
         if (emitStates) {
           emit(state.copyWith(
             loading: false,
+            isSyncing: false,
             isPaginationLoading: false,
             error: 'Unauthorized',
           ));
+        } else {
+          emit(state.copyWith(isSyncing: false));
         }
         return;
       }
@@ -172,7 +178,12 @@ class SchoolCubit extends Cubit<SchoolState> {
         final body = response.body.trim();
         if (body.startsWith('<')) {
           if (emitStates) {
-            emit(state.copyWith(loading: false, isPaginationLoading: false));
+            emit(state.copyWith(
+                loading: false,
+                isSyncing: false,
+                isPaginationLoading: false));
+          } else {
+            emit(state.copyWith(isSyncing: false));
           }
           return;
         }
@@ -183,10 +194,13 @@ class SchoolCubit extends Cubit<SchoolState> {
           if (emitStates) {
             emit(state.copyWith(
               loading: false,
+              isSyncing: false,
               isPaginationLoading: false,
               students: [],
               hasMore: false,
             ));
+          } else {
+            emit(state.copyWith(isSyncing: false));
           }
           return;
         }
@@ -198,9 +212,8 @@ class SchoolCubit extends Cubit<SchoolState> {
           await _saveToLocal(_cacheKey(), jsonData);
         }
 
-        final List<SchoolDetailsModel> updatedList = isLoadMore
-            ? [...state.students, ...newList]
-            : newList;
+        final List<SchoolDetailsModel> updatedList =
+            isLoadMore ? [...state.students, ...newList] : newList;
 
         final bool hasMore = updatedList.length < total;
 
@@ -209,6 +222,7 @@ class SchoolCubit extends Cubit<SchoolState> {
 
         emit(state.copyWith(
           loading: false,
+          isSyncing: false,
           isPaginationLoading: false,
           students: updatedList,
           page: page + 1,
@@ -216,7 +230,10 @@ class SchoolCubit extends Cubit<SchoolState> {
         ));
       } else {
         if (emitStates) {
-          emit(state.copyWith(loading: false, isPaginationLoading: false));
+          emit(state.copyWith(
+              loading: false, isSyncing: false, isPaginationLoading: false));
+        } else {
+          emit(state.copyWith(isSyncing: false));
         }
       }
     } catch (e) {
@@ -224,13 +241,15 @@ class SchoolCubit extends Cubit<SchoolState> {
       if (emitStates) {
         emit(state.copyWith(
           loading: false,
+          isSyncing: false,
           isPaginationLoading: false,
           error: e.toString(),
         ));
+      } else {
+        emit(state.copyWith(isSyncing: false));
       }
     }
   }
-
 
   List<SchoolDetailsModel> _parseSchoolsFromJson(Map<String, dynamic> jsonData) {
     final List list = jsonData['data']?['schools']?['data'] ?? [];
@@ -275,5 +294,35 @@ class SchoolCubit extends Cubit<SchoolState> {
     }
 
     return result;
+  }
+
+  /// Update imageShape for a specific school after image settings are saved
+  void updateSchoolImageShape(int schoolId, String imageShape) {
+    final updated = state.students.map((s) {
+      if (s.id == schoolId) return s.copyWith(imageShape: imageShape);
+      return s;
+    }).toList();
+    final newMap = Map<int, String>.from(state.imageShapeMap)..[schoolId] =
+        imageShape;
+    emit(state.copyWith(students: updated, imageShapeMap: newMap));
+  }
+
+  /// Fetch image settings for a school and update imageShape in state
+  Future<void> fetchAndApplyImageShape(int schoolId) async {
+    try {
+      final url =
+          Config.baseUrl + Routes.updateImageSettings(schoolId.toString());
+      final response = await apiManager.getRequest(url);
+      if (response == null) return;
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final json = jsonDecode(response.body);
+        final shape = json["data"]?["image_shape"]?.toString();
+        if (shape != null && shape.isNotEmpty) {
+          updateSchoolImageShape(schoolId, shape);
+        }
+      }
+    } catch (e) {
+      debugPrint('fetchAndApplyImageShape error: $e');
+    }
   }
 }
