@@ -15,7 +15,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 27,
+      version: 29,
       onCreate: (db, version) async {
         await db.execute('''
         CREATE TABLE students (
@@ -87,6 +87,24 @@ class DBHelper {
         await _createStaffCorrectionTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 29) {
+          // Add staff_uuid column to staff_corrections for deduplication of offline placeholders
+          try {
+            await db.execute(
+              'ALTER TABLE staff_corrections ADD COLUMN staff_uuid TEXT',
+            );
+          } catch (_) {}
+        }
+
+        if (oldVersion < 28) {
+          // Add is_offline column to orders table for offline staff order support
+          try {
+            await db.execute(
+              'ALTER TABLE orders ADD COLUMN is_offline INTEGER DEFAULT 0',
+            );
+          } catch (_) {}
+        }
+
         if (oldVersion < 27) {
           // Add staff_json column to pending_checklists for offline staff process checklist
           try {
@@ -384,6 +402,7 @@ class DBHelper {
           student_json TEXT,
           staff_json TEXT,
           raw_data TEXT,
+          is_offline INTEGER DEFAULT 0,
           updated_at INTEGER
         )
         ''');
@@ -454,6 +473,7 @@ class DBHelper {
         CREATE TABLE IF NOT EXISTS staff_corrections (
           id INTEGER PRIMARY KEY,
           uuid TEXT,
+          staff_uuid TEXT,
           school_id INTEGER,
           status TEXT,
           remark TEXT,

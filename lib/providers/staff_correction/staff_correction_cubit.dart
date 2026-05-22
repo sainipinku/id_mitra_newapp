@@ -11,6 +11,8 @@ import 'package:idmitra/api_mamanger/secure_storage.dart';
 import 'package:idmitra/local_db/staff_correction_local_ds.dart';
 import 'package:idmitra/local_db/correction_local_ds/correction_local_ds.dart';
 import 'package:idmitra/local_db/staff_local_ds/staff_local_ds.dart';
+import 'package:idmitra/local_db/order_local_ds/order_local_ds.dart';
+import 'package:idmitra/db_helper.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'staff_correction_state.dart';
 
@@ -43,6 +45,7 @@ class StaffCorrectionCubit extends Cubit<StaffCorrectionState> {
   final _localDS = StaffCorrectionLocalDS();
   final _correctionLocalDS = CorrectionLocalDS();
   final _staffLocalDS = StaffLocalDS();
+  final _orderLocalDS = OrderLocalDS();
 
   Future<bool> _hasInternet() async {
     try {
@@ -120,7 +123,14 @@ class StaffCorrectionCubit extends Cubit<StaffCorrectionState> {
       );
 
       if (localItems.isNotEmpty) {
-        final updated = isLoadMore ? [...state.items, ...localItems] : localItems;
+        List<StaffCorrectionItem> updated;
+        if (isLoadMore) {
+          final existingIds = state.items.map((e) => e.id).toSet();
+          final newOnly = localItems.where((e) => !existingIds.contains(e.id)).toList();
+          updated = [...state.items, ...newOnly];
+        } else {
+          updated = localItems;
+        }
         emit(state.copyWith(
           loading: false,
           items: updated,
@@ -177,8 +187,8 @@ class StaffCorrectionCubit extends Cubit<StaffCorrectionState> {
           .map((e) => StaffCorrectionItem.fromJson(e as Map<String, dynamic>))
           .toList();
 
-      // Sync to local DB
-      await _localDS.insertStaffCorrections(newItems, schoolId);
+      // Sync to local DB — fromApi:true + page clears stale data on first page
+      await _localDS.insertStaffCorrections(newItems, schoolId, fromApi: true, page: currentPage);
 
       // Fetch latest from local DB to ensure consistency
       final latestLocal = await _localDS.getStaffCorrections(
@@ -188,7 +198,15 @@ class StaffCorrectionCubit extends Cubit<StaffCorrectionState> {
         offset: offset,
       );
 
-      final updated = isLoadMore ? [...state.items, ...latestLocal] : latestLocal;
+      List<StaffCorrectionItem> updated;
+      if (isLoadMore) {
+        // Deduplicate by id to avoid showing same item twice
+        final existingIds = state.items.map((e) => e.id).toSet();
+        final newOnly = latestLocal.where((e) => !existingIds.contains(e.id)).toList();
+        updated = [...state.items, ...newOnly];
+      } else {
+        updated = latestLocal;
+      }
 
       emit(state.copyWith(
         loading: false,
@@ -246,6 +264,63 @@ class StaffCorrectionCubit extends Cubit<StaffCorrectionState> {
     ));
 
     try {
+      // ── OFFLINE: save locally ──
+      if (!await _hasInternet()) {
+        // Collect staff names/photos from selected correction items for display
+        final selectedItems = state.items
+            .where((item) => cardUsers.contains(item.uuid))
+            .toList();
+
+        // Save one offline order per selected staff item for proper display
+        for (final item in selectedItems) {
+          final staff = item.effectiveStaff;
+          await _orderLocalDS.insertOfflineStaffOrder(
+            schoolId: schoolId,
+            cardType: cardType,
+            cardUsers: [item.uuid ?? ''],
+            staffName: staff?.name ?? 'Unknown',
+            staffPhoto: staff?.profilePhotoUrl,
+          );
+        }
+
+        // If no items matched (edge case), save one combined entry
+        if (selectedItems.isEmpty) {
+          await _orderLocalDS.insertOfflineStaffOrder(
+            schoolId: schoolId,
+            cardType: cardType,
+            cardUsers: cardUsers,
+            staffName: 'Staff Order',
+            staffPhoto: null,
+          );
+        }
+
+        emit(state.copyWith(
+          sendOrderLoading: false,
+          sendOrderSuccess: true,
+          sendOrderError: null,
+          selectedIds: {},
+        ));
+
+        // Remove ordered correction items from local staff_corrections immediately
+        // so they don't show in correction list while pending sync
+        final uuidsToRemove = cardUsers.where((u) => u.isNotEmpty).toList();
+        if (uuidsToRemove.isNotEmpty) {
+          final db = await DBHelper.db;
+          await db.delete(
+            'staff_corrections',
+            where: 'uuid IN (${uuidsToRemove.map((_) => '?').join(',')})',
+            whereArgs: uuidsToRemove,
+          );
+          // Also update state to remove these items from the correction list UI
+          final updatedItems = state.items
+              .where((item) => !uuidsToRemove.contains(item.uuid))
+              .toList();
+          emit(state.copyWith(items: updatedItems));
+        }
+        return;
+      }
+
+      // ── ONLINE: send to API ──
       final url = '${Config.baseUrl}auth/school/$schoolId/staff/orders';
       final body = <String, dynamic>{
         'card_type': cardType,
@@ -273,6 +348,16 @@ class StaffCorrectionCubit extends Cubit<StaffCorrectionState> {
 
       final json = jsonDecode(response.body);
       if (json['success'] == true) {
+        // Remove ordered correction items from local staff_corrections table
+        final uuids = cardUsers.where((u) => u.isNotEmpty).toList();
+        if (uuids.isNotEmpty) {
+          final db = await DBHelper.db;
+          await db.delete(
+            'staff_corrections',
+            where: 'uuid IN (${uuids.map((_) => '?').join(',')})',
+            whereArgs: uuids,
+          );
+        }
         emit(state.copyWith(
           sendOrderLoading: false,
           sendOrderSuccess: true,
@@ -334,19 +419,27 @@ class StaffCorrectionCubit extends Cubit<StaffCorrectionState> {
 
         // Add staff to staff_corrections locally
         final staffDetails = await _staffLocalDS.getStaffByUuids(selectedUuids);
-        final correctionItems = staffDetails.map((s) {
+        final staffByUuid = {for (var s in staffDetails) s.uuid: s};
+
+        // Build correction items — use staff from local DB if found,
+        // otherwise create a minimal placeholder so the entry is still saved.
+        final correctionItems = selectedUuids.asMap().entries.map((entry) {
+          final uuid = entry.value;
+          final s = staffByUuid[uuid];
+          // Use a stable negative id derived from index to avoid id=0 skip
+          final itemId = s != null && s.id != 0
+              ? s.id
+              : -(entry.key + 1); // negative placeholder id
           return StaffCorrectionItem(
-            id: s.id,
-            uuid: s.uuid,
+            id: itemId,
+            uuid: uuid,
             status: 'pending',
-            remark: 'Offline Processed',
+            remark: null, // no remark — avoids showing 'Offline Processed' text
             staff: s,
           );
         }).toList();
 
-        if (correctionItems.isNotEmpty) {
-          await _localDS.insertStaffCorrections(correctionItems, schoolId);
-        }
+        await _localDS.insertStaffCorrections(correctionItems, schoolId);
 
         emit(state.copyWith(
           sendOrderLoading: false,
