@@ -7,8 +7,39 @@ import '../../providers/orders/orders_state.dart';
 
 class OrderLocalDS {
   /// 📥 INSERT BATCH
-  Future<void> insertOrders(List<OrderModel> orders, String schoolId) async {
+  /// When [fromApi] is true and [page] is 1, ALL existing rows for this school
+  /// are deleted first so local DB mirrors the server exactly.
+  Future<void> insertOrders(List<OrderModel> orders, String schoolId, {bool fromApi = false, int page = 1}) async {
     final db = await DBHelper.db;
+    final schoolIdInt = int.tryParse(schoolId) ?? 0;
+
+    if (fromApi && page == 1) {
+      // Full replace on first page: wipe all local orders for this school
+      // so stale/offline data doesn't linger after a fresh API fetch.
+      await db.delete(
+        'orders',
+        where: 'school_id = ?',
+        whereArgs: [schoolIdInt],
+      );
+    } else if (fromApi && page > 1) {
+      // Subsequent pages: only remove rows whose uuid matches incoming items
+      final apiUuids = orders.map((o) => o.uuid).where((u) => u.isNotEmpty).toList();
+      if (apiUuids.isNotEmpty) {
+        await db.delete(
+          'orders',
+          where:
+              'school_id = ? AND uuid IN (${apiUuids.map((_) => '?').join(',')})',
+          whereArgs: [schoolIdInt, ...apiUuids],
+        );
+      }
+      // Also remove offline placeholders on any page
+      await db.delete(
+        'orders',
+        where: 'school_id = ? AND is_offline = 1',
+        whereArgs: [schoolIdInt],
+      );
+    }
+
     final batch = db.batch();
 
     for (var order in orders) {
@@ -73,6 +104,19 @@ class OrderLocalDS {
     print("Inserted Orders: ${orders.length}");
   }
 
+  /// Convert dd-mm-yyyy or dd.mm.yyyy or dd/mm/yyyy → yyyy-mm-dd for SQLite date()
+  String _toSqliteDate(String input) {
+    if (input.isEmpty) return '';
+    // Already in yyyy-mm-dd format
+    if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(input)) return input;
+    // dd-mm-yyyy / dd.mm.yyyy / dd/mm/yyyy
+    final parts = input.split(RegExp(r'[-./]'));
+    if (parts.length == 3 && parts[2].length == 4) {
+      return '${parts[2]}-${parts[1].padLeft(2, '0')}-${parts[0].padLeft(2, '0')}';
+    }
+    return input;
+  }
+
   /// 🔍 FETCH ORDERS
   Future<List<OrderModel>> getOrders({
     required String schoolId,
@@ -113,14 +157,17 @@ class OrderLocalDS {
       }
     }
 
-    if (startDate.isNotEmpty) {
+    final sqlStart = _toSqliteDate(startDate);
+    final sqlEnd = _toSqliteDate(endDate);
+
+    if (sqlStart.isNotEmpty) {
       where += " AND date(ordered_at) >= date(?)";
-      args.add(startDate);
+      args.add(sqlStart);
     }
 
-    if (endDate.isNotEmpty) {
+    if (sqlEnd.isNotEmpty) {
       where += " AND date(ordered_at) <= date(?)";
-      args.add(endDate);
+      args.add(sqlEnd);
     }
 
     final data = await db.query(
@@ -190,14 +237,17 @@ class OrderLocalDS {
       }
     }
 
-    if (startDate.isNotEmpty) {
+    final sqlStart = _toSqliteDate(startDate);
+    final sqlEnd = _toSqliteDate(endDate);
+
+    if (sqlStart.isNotEmpty) {
       where += " AND date(ordered_at) >= date(?)";
-      args.add(startDate);
+      args.add(sqlStart);
     }
 
-    if (endDate.isNotEmpty) {
+    if (sqlEnd.isNotEmpty) {
       where += " AND date(ordered_at) <= date(?)";
-      args.add(endDate);
+      args.add(sqlEnd);
     }
 
     final result = await db.rawQuery('SELECT COUNT(*) FROM orders WHERE $where', args);
@@ -207,6 +257,91 @@ class OrderLocalDS {
   Future<void> clearForSchool(String schoolId) async {
     final db = await DBHelper.db;
     await db.delete('orders', where: 'school_id = ?', whereArgs: [int.tryParse(schoolId) ?? 0]);
+  }
+
+  /// 📥 INSERT OFFLINE STAFF ORDER — saves directly to orders table with is_offline=1
+  Future<int> insertOfflineStaffOrder({
+    required String schoolId,
+    required String cardType,
+    required List<String> cardUsers, // correction item uuids
+    required String staffName,
+    required String? staffPhoto,
+  }) async {
+    final db = await DBHelper.db;
+    final now = DateTime.now();
+    // Use negative timestamp as a temporary local id to avoid collision with server ids
+    final tempId = -(now.millisecondsSinceEpoch ~/ 1000);
+    final tempUuid = 'offline_${now.millisecondsSinceEpoch}';
+
+    await db.insert(
+      'orders',
+      {
+        'id': tempId,
+        'uuid': tempUuid,
+        'school_id': int.tryParse(schoolId) ?? 0,
+        'status': 'order_created',
+        'type': cardType,
+        'ordered_at': now.toIso8601String(),
+        'received_at_short': '',
+        'student_card': 0,
+        'student_card_qty': 1,
+        'parent_card': 0,
+        'admit_card': 0,
+        'printing_issue': null,
+        'delivered_at': null,
+        'cancelled_at': null,
+        'school_json': '{}',
+        'student_json': '{}',
+        'staff_json': jsonEncode({
+          'id': 0,
+          'name': staffName,
+          'profile_photo_url': staffPhoto,
+          'designation': null,
+          'phone': null,
+          'email': null,
+          'employeeId': null,
+        }),
+        'raw_data': '{}',
+        'is_offline': 1,
+        'updated_at': now.millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+
+    // Also save to pending_orders for sync
+    await db.insert('pending_orders', {
+      'school_id': schoolId,
+      'card_type': cardType,
+      'card_for_json': jsonEncode([]),
+      'card_users_json': jsonEncode(cardUsers),
+      'order_json': jsonEncode({
+        'temp_uuid': tempUuid,
+        'staff_name': staffName,
+        'staff_photo': staffPhoto,
+      }),
+      'created_at': now.millisecondsSinceEpoch,
+    });
+
+    print("Saved offline staff order locally: $tempUuid");
+    return tempId;
+  }
+
+  /// 🔍 FETCH OFFLINE ORDERS (is_offline = 1)
+  Future<List<Map<String, dynamic>>> getOfflineOrders({String? schoolId}) async {
+    final db = await DBHelper.db;
+    String where = 'is_offline = 1';
+    List<dynamic> args = [];
+    if (schoolId != null && schoolId.isNotEmpty) {
+      where += ' AND school_id = ?';
+      args.add(int.tryParse(schoolId) ?? 0);
+    }
+    return await db.query('orders', where: where, whereArgs: args, orderBy: 'updated_at DESC');
+  }
+
+  /// 🗑️ DELETE ORDER BY UUID (used after successful sync)
+  Future<void> deleteOrderByUuid(String uuid) async {
+    final db = await DBHelper.db;
+    await db.delete('orders', where: 'uuid = ?', whereArgs: [uuid]);
   }
 
   Future<void> savePendingStatusUpdate({

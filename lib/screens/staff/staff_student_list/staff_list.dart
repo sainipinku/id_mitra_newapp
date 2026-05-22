@@ -1590,6 +1590,13 @@ class _StaffCorrectionTabState extends State<_StaffCorrectionTab> {
         child: _CreateOrderDialog(
           schoolId: widget.schoolId,
           studentUuids: selectedUuids,
+          onSuccess: () {
+            // Refresh Staff Orders tab after order created (online or offline)
+            ctx.read<StaffListCubit>().fetchStaffOrders(
+              schoolId: widget.schoolId,
+              reset: true,
+            );
+          },
         ),
       ),
     );
@@ -2165,18 +2172,18 @@ class _StaffCorrectionItemCardState extends State<_StaffCorrectionItemCard> {
   String? _uploadedPhotoUrl;
   File? _photoFile;
 
-  Color _statusColor(String? status) {
-    switch ((status ?? '').toLowerCase()) {
-      case 'pending':
-        return Colors.orange;
-      case 'approved':
-        return Colors.green;
-      case 'rejected':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
+  // Color _statusColor(String? status) {
+  //   switch ((status ?? '').toLowerCase()) {
+  //     case 'pending':
+  //       return Colors.orange;
+  //     case 'approved':
+  //       return Colors.green;
+  //     case 'rejected':
+  //       return Colors.red;
+  //     default:
+  //       return Colors.grey;
+  //   }
+  // }
 
   String? get _currentPhotoUrl =>
       _uploadedPhotoUrl ?? widget.item.effectiveStaff?.profilePhotoUrl;
@@ -2504,7 +2511,8 @@ class _StaffCorrectionItemCardState extends State<_StaffCorrectionItemCard> {
                         style: MyStyles.regularText(
                             size: 12, color: AppTheme.graySubTitleColor)),
                   ],
-                  if ((widget.item.remark ?? '').isNotEmpty) ...[
+                  if ((widget.item.remark ?? '').isNotEmpty &&
+                      widget.item.remark != 'Offline Processed') ...[
                     const SizedBox(height: 4),
                     Text('Remark: ${widget.item.remark}',
                         style: MyStyles.regularText(
@@ -2515,23 +2523,23 @@ class _StaffCorrectionItemCardState extends State<_StaffCorrectionItemCard> {
                 ],
               ),
             ),
-            if ((widget.item.status ?? '').isNotEmpty) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color:
-                  _statusColor(widget.item.status).withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  widget.item.status!.toUpperCase(),
-                  style: MyStyles.mediumText(
-                      size: 10, color: _statusColor(widget.item.status)),
-                ),
-              ),
-            ],
+            // if ((widget.item.status ?? '').isNotEmpty) ...[
+            //   const SizedBox(width: 8),
+            //   Container(
+            //     padding:
+            //     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            //     decoration: BoxDecoration(
+            //       color:
+            //       //_statusColor(widget.item.status).withOpacity(0.12),
+            //      // borderRadius: BorderRadius.circular(20),
+            //     ),
+            //     child: Text(
+            //       widget.item.status!.toUpperCase(),
+            //       style: MyStyles.mediumText(
+            //           size: 10, color: _statusColor(widget.item.status)),
+            //     ),
+            //   ),
+            // ],
           ],
         ),
       ),
@@ -3462,9 +3470,11 @@ class _StaffListDotDateFormatter extends TextInputFormatter {
 class _CreateOrderDialog extends StatefulWidget {
   final String schoolId;
   final List<String> studentUuids;
+  final VoidCallback? onSuccess;
   const _CreateOrderDialog({
     required this.schoolId,
     this.studentUuids = const [],
+    this.onSuccess,
   });
 
   @override
@@ -3507,6 +3517,9 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
       if (context.mounted) {
         Navigator.of(context).pop();
         final state = cubit.state;
+        if (state.sendOrderError == null) {
+          widget.onSuccess?.call();
+        }
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(state.sendOrderError ?? 'Order created successfully!'),
           backgroundColor: state.sendOrderError != null ? Colors.red : AppTheme.btnColor,
