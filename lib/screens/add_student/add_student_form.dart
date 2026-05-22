@@ -1547,18 +1547,10 @@ class _AddStudentFormPageState extends State<AddStudentFormPage>
                                       ),
                                       ..._selectVal,
                                     };
-                                    if (widget.editStudent !=
-                                        null) {
-                                      ctx
-                                          .read<
-                                          AddStudentCubit>()
-                                          .updateStudent(
-                                        studentUuid: widget
-                                            .editStudent!
-                                            .uuid ??
-                                            '',
-                                        schoolId:
-                                        widget.schoolId,
+                                    if (widget.editStudent != null) {
+                                      ctx.read<AddStudentCubit>().updateStudent(
+                                        studentUuid: widget.editStudent!.uuid ?? '',
+                                        schoolId: widget.schoolId,
                                         fields: allFields,
                                         files: _files,
                                         formDataModel: data,
