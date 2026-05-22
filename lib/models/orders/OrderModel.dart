@@ -59,6 +59,20 @@ class OrderModel {
     );
   }
 
+  static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  String get formattedOrderedAt {
+    if (orderedAt.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(orderedAt).toLocal();
+      final day = dt.day.toString().padLeft(2, '0');
+      final month = _months[dt.month - 1];
+      return '$day $month ${dt.year}';
+    } catch (_) {
+      return orderedAt;
+    }
+  }
+
   String get statusLabel {
     return kOrderStatuses
         .firstWhere(

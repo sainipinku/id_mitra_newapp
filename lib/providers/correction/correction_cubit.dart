@@ -25,11 +25,17 @@ class CorrectionCubit extends Cubit<CorrectionState> {
         .listen((results) async {
       final hasInternet = !results.contains(ConnectivityResult.none);
       if (hasInternet) {
-        syncPendingChecklists();
-        syncPendingOrders();
+        await syncPendingChecklists();
         syncPendingDownloads();
       }
     });
+    _initSync();
+  }
+
+  Future<void> _initSync() async {
+    if (await _hasInternet()) {
+      await syncPendingChecklists();
+    }
   }
 
   @override
@@ -268,18 +274,19 @@ class CorrectionCubit extends Cubit<CorrectionState> {
               motherPhone: s.motherPhone,
               schoolClassId: s.schoolClassId,
               schoolClassSectionId: s.schoolClassSectionId,
+              photoUrl: s.offlinePhotoPath ?? s.profilePhotoUrl,
               profilePhotoUrl: s.profilePhotoUrl,
               studentClass: s.datumClass != null
                   ? CorrectionStudentClass(
-                      id: s.datumClass!.id ?? 0,
-                      nameWithPrefix: s.datumClass!.nameWithprefix,
-                    )
+                id: s.datumClass!.id ?? 0,
+                nameWithPrefix: s.datumClass!.nameWithprefix,
+              )
                   : null,
               section: s.section != null
                   ? CorrectionStudentSection(
-                      id: s.section!.id ?? 0,
-                      name: s.section!.name,
-                    )
+                id: s.section!.id ?? 0,
+                name: s.section!.name,
+              )
                   : null,
             ),
           );
@@ -309,11 +316,6 @@ class CorrectionCubit extends Cubit<CorrectionState> {
         if (cardFor.isNotEmpty) 'card_for': cardFor,
       };
       final response = await _api.postRequest(body, url);
-      print("=== processOrder RESPONSE ===");
-      print("URL: $url");
-      print("BODY: ${jsonEncode(body)}");
-      print("STATUS: ${response?.statusCode}");
-      print("BODY: ${response?.body}");
       if (response == null) {
         emit(state.copyWith(
             sendOrderLoading: false,
@@ -371,18 +373,19 @@ class CorrectionCubit extends Cubit<CorrectionState> {
               motherPhone: s.motherPhone,
               schoolClassId: s.schoolClassId,
               schoolClassSectionId: s.schoolClassSectionId,
+              photoUrl: s.offlinePhotoPath ?? s.profilePhotoUrl,
               profilePhotoUrl: s.profilePhotoUrl,
               studentClass: s.datumClass != null
                   ? CorrectionStudentClass(
-                      id: s.datumClass!.id ?? 0,
-                      nameWithPrefix: s.datumClass!.nameWithprefix,
-                    )
+                id: s.datumClass!.id ?? 0,
+                nameWithPrefix: s.datumClass!.nameWithprefix,
+              )
                   : null,
               section: s.section != null
                   ? CorrectionStudentSection(
-                      id: s.section!.id ?? 0,
-                      name: s.section!.name,
-                    )
+                id: s.section!.id ?? 0,
+                name: s.section!.name,
+              )
                   : null,
             ),
           );
@@ -415,6 +418,8 @@ class CorrectionCubit extends Cubit<CorrectionState> {
     print("Syncing ${pending.length} pending checklists...");
 
     bool anySynced = false;
+    final Set<String> syncedSchoolIds = {};
+
     for (var item in pending) {
       try {
         final schoolId = item['school_id'];
@@ -439,6 +444,7 @@ class CorrectionCubit extends Cubit<CorrectionState> {
           if (json['success'] == true) {
             await _localDS.deletePendingChecklist(item['id']);
             print("Successfully synced pending checklist ID: ${item['id']}");
+            syncedSchoolIds.add(schoolId.toString());
             anySynced = true;
           }
         }
@@ -448,15 +454,13 @@ class CorrectionCubit extends Cubit<CorrectionState> {
     }
 
     if (anySynced) {
-      final school = await UserLocal.getSchool();
-      final schoolId = school['schoolId'];
-      if (schoolId != null && schoolId.isNotEmpty) {
-        fetchCorrectionStudents(schoolId: schoolId);
-        emit(state.copyWith(syncSuccess: true));
-        Future.delayed(const Duration(seconds: 2), () {
-          if (!isClosed) emit(state.copyWith(syncSuccess: false));
-        });
+      for (final schoolId in syncedSchoolIds) {
+        await fetchCorrectionStudents(schoolId: schoolId);
       }
+      emit(state.copyWith(syncSuccess: true));
+      Future.delayed(const Duration(seconds: 2), () {
+        if (!isClosed) emit(state.copyWith(syncSuccess: false));
+      });
     }
   }
 
@@ -482,9 +486,9 @@ class CorrectionCubit extends Cubit<CorrectionState> {
         selectedUuids = state.students
             .where((s) =>
         state.selectedStudentIds.contains(s.id) &&
-            s.student?.uuid != null &&
-            s.student!.uuid!.trim().isNotEmpty)
-            .map((s) => s.student!.uuid!.trim())
+            s.uuid != null &&
+            s.uuid!.trim().isNotEmpty)
+            .map((s) => s.uuid!.trim())
             .toList();
       }
 
@@ -506,67 +510,40 @@ class CorrectionCubit extends Cubit<CorrectionState> {
 
       if (!await _hasInternet()) {
         final now = DateTime.now();
-
-        final studentDetails = await _studentLocalDS.getStudentsByUuids(selectedUuids);
-        final schoolInfo = await UserLocal.getSchool();
-
-        Map<String, dynamic>? studentData;
-        if (studentDetails.isNotEmpty) {
-          final firstStudent = studentDetails.first;
-          studentData = {
-            'id': firstStudent.id,
-            'name': firstStudent.name ?? 'Unknown',
-            'profile_photo_url': firstStudent.profilePhotoUrl,
-            'class': firstStudent.datumClass != null ? {
-              'id': firstStudent.datumClass!.id,
-              'name': firstStudent.datumClass!.name,
-              'name_withprefix': firstStudent.datumClass!.nameWithprefix,
-            } : null,
-            'section': firstStudent.section != null ? {
-              'id': firstStudent.section!.id,
-              'name': firstStudent.section!.name,
-            } : null,
-            'gender': firstStudent.gender,
-            'dob': firstStudent.dob,
-            'father_name': firstStudent.fatherName,
-            'father_phone': firstStudent.fatherPhone,
-            'mother_name': firstStudent.motherName,
-            'address': firstStudent.address,
-            'pincode': firstStudent.pincode,
-            'login_id': firstStudent.loginId,
-          };
+        final uuidToItem = <String, CorrectionStudentItem>{};
+        for (final s in state.students) {
+          if (s.uuid != null) uuidToItem[s.uuid!.trim()] = s;
         }
 
-        final schoolData = {
-          'id': int.tryParse(schoolInfo['schoolId'] ?? '0') ?? 0,
-          'name': schoolInfo['schoolName'] ?? 'Unknown School',
-        };
+        for (int i = 0; i < selectedUuids.length; i++) {
+          final itemUuid = selectedUuids[i];
+          final studentData = uuidToItem[itemUuid]?.student;
+          final mockOrderJson = {
+            "id": 0,
+            "uuid": "offline_${now.millisecondsSinceEpoch}_$i",
+            "status": "order_created",
+            "type": cardType,
+            "orderd_at": now.toIso8601String(),
+            "received_at_short": "Pending Sync",
+            "student_card": cardFor.contains('student_card') ? 1 : 0,
+            "parent_card": cardFor.contains('parent_card') ? 1 : 0,
+            "admit_card": cardFor.contains('admit_card') ? 1 : 0,
+            "student_card_qty": 1,
+            "student": {
+              "name": studentData?.name ?? "",
+              "className": studentData?.studentClass?.nameWithPrefix ?? "",
+              "profile_photo_url": studentData?.profilePhotoUrl ?? "",
+            },
+          };
 
-        final dateOnly = '${now.day.toString().padLeft(2, '0')} '
-            '${_monthName(now.month)} ${now.year}';
-
-        final mockOrderJson = {
-          "id": 0,
-          "uuid": "offline_${now.millisecondsSinceEpoch}",
-          "status": "order_created",
-          "type": cardType,
-          "orderd_at": dateOnly,
-          "received_at_short": "Pending Sync",
-          "student_card": cardFor.contains('student_card') ? 1 : 0,
-          "parent_card": cardFor.contains('parent_card') ? 1 : 0,
-          "admit_card": cardFor.contains('admit_card') ? 1 : 0,
-          "student_card_qty": selectedUuids.length,
-          "school": schoolData,
-          "student": studentData,
-        };
-
-        await _localDS.savePendingOrder(
-          schoolId: schoolId,
-          cardType: cardType,
-          cardFor: cardFor,
-          cardUsers: selectedUuids,
-          orderJson: mockOrderJson,
-        );
+          await _localDS.savePendingOrder(
+            schoolId: schoolId,
+            cardType: cardType,
+            cardFor: cardFor,
+            cardUsers: [itemUuid],
+            orderJson: mockOrderJson,
+          );
+        }
 
         emit(state.copyWith(
           createOrderLoading: false,
@@ -620,67 +597,40 @@ class CorrectionCubit extends Cubit<CorrectionState> {
     } catch (e) {
       if (e is SocketException || e is http.ClientException) {
         final now = DateTime.now();
-
-        final studentDetails = await _studentLocalDS.getStudentsByUuids(selectedUuids);
-        final schoolInfo = await UserLocal.getSchool();
-
-        Map<String, dynamic>? studentData;
-        if (studentDetails.isNotEmpty) {
-          final firstStudent = studentDetails.first;
-          studentData = {
-            'id': firstStudent.id,
-            'name': firstStudent.name ?? 'Unknown',
-            'profile_photo_url': firstStudent.profilePhotoUrl,
-            'class': firstStudent.datumClass != null ? {
-              'id': firstStudent.datumClass!.id,
-              'name': firstStudent.datumClass!.name,
-              'name_withprefix': firstStudent.datumClass!.nameWithprefix,
-            } : null,
-            'section': firstStudent.section != null ? {
-              'id': firstStudent.section!.id,
-              'name': firstStudent.section!.name,
-            } : null,
-            'gender': firstStudent.gender,
-            'dob': firstStudent.dob,
-            'father_name': firstStudent.fatherName,
-            'father_phone': firstStudent.fatherPhone,
-            'mother_name': firstStudent.motherName,
-            'address': firstStudent.address,
-            'pincode': firstStudent.pincode,
-            'login_id': firstStudent.loginId,
-          };
+        final uuidToItem = <String, CorrectionStudentItem>{};
+        for (final s in state.students) {
+          if (s.uuid != null) uuidToItem[s.uuid!.trim()] = s;
         }
 
-        final schoolData = {
-          'id': int.tryParse(schoolInfo['schoolId'] ?? '0') ?? 0,
-          'name': schoolInfo['schoolName'] ?? 'Unknown School',
-        };
+        for (int i = 0; i < selectedUuids.length; i++) {
+          final itemUuid = selectedUuids[i];
+          final studentData = uuidToItem[itemUuid]?.student;
+          final mockOrderJson = {
+            "id": 0,
+            "uuid": "offline_${now.millisecondsSinceEpoch}_$i",
+            "status": "order_created",
+            "type": cardType,
+            "orderd_at": now.toIso8601String(),
+            "received_at_short": "Pending Sync",
+            "student_card": cardFor.contains('student_card') ? 1 : 0,
+            "parent_card": cardFor.contains('parent_card') ? 1 : 0,
+            "admit_card": cardFor.contains('admit_card') ? 1 : 0,
+            "student_card_qty": 1,
+            "student": {
+              "name": studentData?.name ?? "",
+              "className": studentData?.studentClass?.nameWithPrefix ?? "",
+              "profile_photo_url": studentData?.profilePhotoUrl ?? "",
+            },
+          };
 
-        final dateOnly = '${now.day.toString().padLeft(2, '0')} '
-            '${_monthName(now.month)} ${now.year}';
-
-        final mockOrderJson = {
-          "id": 0,
-          "uuid": "offline_${now.millisecondsSinceEpoch}",
-          "status": "order_created",
-          "type": cardType,
-          "orderd_at": dateOnly,
-          "received_at_short": "Pending Sync",
-          "student_card": cardFor.contains('student_card') ? 1 : 0,
-          "parent_card": cardFor.contains('parent_card') ? 1 : 0,
-          "admit_card": cardFor.contains('admit_card') ? 1 : 0,
-          "student_card_qty": selectedUuids.length,
-          "school": schoolData,
-          "student": studentData,
-        };
-
-        await _localDS.savePendingOrder(
-          schoolId: schoolId,
-          cardType: cardType,
-          cardFor: cardFor,
-          cardUsers: selectedUuids,
-          orderJson: mockOrderJson,
-        );
+          await _localDS.savePendingOrder(
+            schoolId: schoolId,
+            cardType: cardType,
+            cardFor: cardFor,
+            cardUsers: [itemUuid],
+            orderJson: mockOrderJson,
+          );
+        }
 
         emit(state.copyWith(
           createOrderLoading: false,
@@ -702,15 +652,30 @@ class CorrectionCubit extends Cubit<CorrectionState> {
     final pending = await _localDS.getAllPendingOrders();
     if (pending.isEmpty) return;
 
-    print("Syncing ${pending.length} pending orders...");
+    print("CorrectionCubit: Syncing ${pending.length} pending orders...");
 
     for (var item in pending) {
       try {
         final schoolId = item['school_id'];
         final cardType = item['card_type'];
         final cardFor = List<String>.from(jsonDecode(item['card_for_json'] ?? '[]'));
-        final cardUsers = List<String>.from(jsonDecode(item['card_users_json'] ?? '[]'));
+        var cardUsers = List<String>.from(jsonDecode(item['card_users_json'] ?? '[]'));
 
+        // Resolve student UUIDs → correction list item UUIDs using local DB
+        try {
+          final correctionStudents = await _localDS.getCorrectionStudents(schoolId: schoolId);
+          final Map<String, String> studentToItemUuid = {};
+          for (final s in correctionStudents) {
+            if (s.student?.uuid != null && s.uuid != null && s.uuid!.trim().isNotEmpty) {
+              studentToItemUuid[s.student!.uuid!.trim()] = s.uuid!.trim();
+            }
+          }
+          if (studentToItemUuid.isNotEmpty) {
+            cardUsers = cardUsers.map((uuid) => studentToItemUuid[uuid] ?? uuid).toList();
+          }
+        } catch (_) {}
+
+        print("CorrectionCubit: Syncing order ID ${item['id']} → card_users=$cardUsers, cardType=$cardType, schoolId=$schoolId");
         final String url = '${Config.baseUrl}auth/school/$schoolId/orders';
         final Map<String, dynamic> body = {
           "card_users": cardUsers,
@@ -720,16 +685,32 @@ class CorrectionCubit extends Cubit<CorrectionState> {
           "admit_card": cardFor.contains('admit_card') ? 1 : 0,
         };
 
-        final response = await _api.postRequest(body, url);
+        var response = await _api.postRequest(body, url);
+
+        // 403 fallback to partner URL
+        if (response != null && response.statusCode == 403) {
+          final partnerUrl = '${Config.baseUrl}auth/partner/school/$schoolId/orders';
+          response = await _api.postRequest(body, partnerUrl);
+        }
+
         if (response != null && response.statusCode >= 200 && response.statusCode < 300) {
           final json = jsonDecode(response.body);
           if (json['success'] == true) {
             await _localDS.deletePendingOrder(item['id']);
-            print("Successfully synced pending order ID: ${item['id']}");
+            print("CorrectionCubit: Successfully order ID: ${item['id']}");
+          } else {
+            // Server rejected — invalid UUID or data, delete so it doesn't block forever
+            await _localDS.deletePendingOrder(item['id']);
+            print("CorrectionCubit: Server rejected order (deleted): ${json['message']}");
           }
+        } else if (response != null && (response.statusCode == 422 || response.statusCode == 400 || response.statusCode == 500)) {
+          await _localDS.deletePendingOrder(item['id']);
+          print("CorrectionCubit: Permanent error ${response.statusCode}, deleted pending order ID: ${item['id']}");
+        } else {
+          print("CorrectionCubit: Transient error ${response?.statusCode}, will retry later");
         }
       } catch (e) {
-        print("Error syncing pending order: $e");
+        print("CorrectionCubit: Error syncing pending order: $e");
       }
     }
   }
@@ -778,9 +759,7 @@ class CorrectionCubit extends Cubit<CorrectionState> {
       return;
     }
 
-    const int perPage = 50;
     final currentPage = isLoadMore ? state.studentsPage : 1;
-    final int offset = (currentPage - 1) * perPage;
 
     final effectiveClassFilter =
     classIds.isNotEmpty ? classIds.join(',') : classFilter;
@@ -788,7 +767,6 @@ class CorrectionCubit extends Cubit<CorrectionState> {
     if (!isLoadMore) {
       emit(state.copyWith(
         studentsLoading: true,
-        students: [],
         studentsPage: 1,
         studentsHasMore: true,
         clearStudentsError: true,
@@ -796,10 +774,8 @@ class CorrectionCubit extends Cubit<CorrectionState> {
             ? classIds
             : (classFilter.isNotEmpty
             ? classFilter.split(',')
-            : state.selectedClassIds),
+            : []),
       ));
-    } else {
-      emit(state.copyWith(studentsLoading: true));
     }
 
     try {
@@ -809,44 +785,35 @@ class CorrectionCubit extends Cubit<CorrectionState> {
         search: search,
         classId: effectiveClassFilter,
         sectionIds: sectionIds,
-        limit: perPage,
-        offset: offset,
-      );
-
-      final int totalLocalCount = await _localDS.getCount(
-        schoolId: schoolId,
-        search: search,
-        classId: effectiveClassFilter,
-        sectionIds: sectionIds,
       );
 
       if (localList.isNotEmpty) {
         final updated =
-            isLoadMore ? [...state.students, ...localList] : localList;
-
-        bool hasMoreLocal = updated.length < totalLocalCount;
-
+        isLoadMore ? [...state.students, ...localList] : localList;
         emit(state.copyWith(
           studentsLoading: false,
           students: updated,
           studentsPage: currentPage + 1,
-          studentsHasMore: hasMoreLocal || await _hasInternet(),
-          studentsTotal: totalLocalCount > state.studentsTotal ? totalLocalCount : state.studentsTotal,
+          studentsHasMore: false,
+          studentsTotal: isLoadMore ? state.studentsTotal : updated.length,
         ));
 
-        // If we have internet, we continue to fetch from server to sync/update local cache
-        // If it's load more and we have full page from local, we can stop here.
-        if (isLoadMore && localList.length == perPage) return;
         if (!await _hasInternet()) return;
       }
 
       if (!await _hasInternet()) {
-        emit(state.copyWith(studentsLoading: false));
+        if (!isLoadMore && localList.isEmpty) {
+          emit(state.copyWith(
+            studentsLoading: false,
+            students: [],
+            studentsTotal: 0,
+          ));
+        }
         return;
       }
 
       String url =
-          '${Config.baseUrl}auth/school/$schoolId/orders/correction-lists/students?page=$currentPage&per_page=$perPage';
+          '${Config.baseUrl}auth/school/$schoolId/orders/correction-lists/students?page=$currentPage&per_page=50';
 
       if (search.isNotEmpty) url += '&search=$search';
 
@@ -967,22 +934,6 @@ class CorrectionCubit extends Cubit<CorrectionState> {
     emit(state.copyWith(columnsLoading: true));
 
     try {
-      // 1. Try to load from Local DB first
-      final localColumns = await _localDS.getDownloadColumns(schoolId);
-      if (localColumns.isNotEmpty) {
-        emit(state.copyWith(
-          columnsLoading: false,
-          downloadColumns: localColumns,
-        ));
-        // If we have internet, we continue to fetch from server to update cache
-        if (!await _hasInternet()) return;
-      }
-
-      if (!await _hasInternet()) {
-        emit(state.copyWith(columnsLoading: false));
-        return;
-      }
-
       String url = '${Config.baseUrl}auth/school/$schoolId/form-fields';
 
       var response = await _api.getRequest(url);
@@ -1021,11 +972,6 @@ class CorrectionCubit extends Cubit<CorrectionState> {
         ),
       )
           .toList();
-
-      // 2. Save to Local DB
-      if (columns.isNotEmpty) {
-        await _localDS.saveDownloadColumns(schoolId, columns);
-      }
 
       emit(state.copyWith(
         columnsLoading: false,
@@ -1164,13 +1110,5 @@ class CorrectionCubit extends Cubit<CorrectionState> {
     } catch (e) {
       return null;
     }
-  }
-
-  String _monthName(int month) {
-    const months = [
-      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    return months[month];
   }
 }

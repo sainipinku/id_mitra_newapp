@@ -9,6 +9,8 @@ import 'package:idmitra/api_mamanger/api_manager.dart';
 import 'package:idmitra/api_mamanger/config.dart';
 import 'package:idmitra/api_mamanger/secure_storage.dart';
 import 'package:idmitra/local_db/staff_correction_local_ds.dart';
+import 'package:idmitra/local_db/correction_local_ds/correction_local_ds.dart';
+import 'package:idmitra/local_db/staff_local_ds/staff_local_ds.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'staff_correction_state.dart';
 
@@ -26,6 +28,7 @@ class StaffCorrectionCubit extends Cubit<StaffCorrectionState> {
 
       if (_lastSchoolId != null) {
         syncOfflinePhotos(schoolId: _lastSchoolId!);
+        syncPendingStaffChecklists(schoolId: _lastSchoolId!);
       }
     });
   }
@@ -38,6 +41,8 @@ class StaffCorrectionCubit extends Cubit<StaffCorrectionState> {
 
   final ApiManager _api = ApiManager();
   final _localDS = StaffCorrectionLocalDS();
+  final _correctionLocalDS = CorrectionLocalDS();
+  final _staffLocalDS = StaffLocalDS();
 
   Future<bool> _hasInternet() async {
     try {
@@ -316,6 +321,42 @@ class StaffCorrectionCubit extends Cubit<StaffCorrectionState> {
 
     emit(state.copyWith(sendOrderLoading: true, clearSendOrderError: true, sendOrderSuccess: false));
     try {
+      // ── OFFLINE: save locally and add to staff_corrections ──
+      if (!await _hasInternet()) {
+        await _correctionLocalDS.savePendingStaffChecklist(
+          schoolId: schoolId,
+          processType: processType.isNotEmpty ? processType : 'create',
+          listType: listType.isNotEmpty ? listType : 'selected',
+          cardType: cardType,
+          cardFor: cardFor,
+          staffUuids: selectedUuids,
+        );
+
+        // Add staff to staff_corrections locally
+        final staffDetails = await _staffLocalDS.getStaffByUuids(selectedUuids);
+        final correctionItems = staffDetails.map((s) {
+          return StaffCorrectionItem(
+            id: s.id,
+            uuid: s.uuid,
+            status: 'pending',
+            remark: 'Offline Processed',
+            staff: s,
+          );
+        }).toList();
+
+        if (correctionItems.isNotEmpty) {
+          await _localDS.insertStaffCorrections(correctionItems, schoolId);
+        }
+
+        emit(state.copyWith(
+          sendOrderLoading: false,
+          sendOrderSuccess: true,
+          sendOrderError: null,
+        ));
+        return;
+      }
+
+      // ── ONLINE: send to API ──
       final url = '${Config.baseUrl}auth/school/$schoolId/staff/correction-lists/process';
       final body = <String, dynamic>{
         'processType': processType.isNotEmpty ? processType : 'create',
@@ -344,6 +385,53 @@ class StaffCorrectionCubit extends Cubit<StaffCorrectionState> {
       }
     } catch (e) {
       emit(state.copyWith(sendOrderLoading: false, sendOrderError: e.toString()));
+    }
+  }
+
+  /// Sync pending staff checklists when internet is restored
+  Future<void> syncPendingStaffChecklists({required String schoolId}) async {
+    if (!await _hasInternet()) return;
+
+    final allPending = await _correctionLocalDS.getAllPendingChecklists();
+    final staffPending = allPending.where((row) {
+      final staffJson = row['staff_json'] as String?;
+      return staffJson != null && staffJson.isNotEmpty && staffJson != 'null';
+    }).toList();
+
+    if (staffPending.isEmpty) return;
+
+    debugPrint("Syncing ${staffPending.length} pending staff checklists...");
+
+    for (final row in staffPending) {
+      try {
+        final rowId = row['id'] as int;
+        final rowSchoolId = row['school_id'] as String? ?? schoolId;
+        final processType = row['process_type'] as String? ?? 'create';
+        final listType = row['list_type'] as String? ?? 'selected';
+        final cardType = row['card_type'] as String? ?? '';
+        final cardFor = jsonDecode(row['card_for'] as String? ?? '[]') as List;
+        final staffUuids = jsonDecode(row['staff_json'] as String) as List;
+
+        final url = '${Config.baseUrl}auth/school/$rowSchoolId/staff/correction-lists/process';
+        final body = <String, dynamic>{
+          'processType': processType,
+          'listType': listType,
+          'staff': staffUuids.cast<String>(),
+          if (cardType.isNotEmpty) 'card_type': cardType,
+          if (cardFor.isNotEmpty) 'card_for': cardFor.cast<String>(),
+        };
+
+        final response = await _api.postRequest(body, url);
+        if (response != null) {
+          final json = jsonDecode(response.body);
+          if (json['success'] == true) {
+            await _correctionLocalDS.deletePendingChecklist(rowId);
+            debugPrint("Synced pending staff checklist id=$rowId");
+          }
+        }
+      } catch (e) {
+        debugPrint("Failed to sync pending staff checklist: $e");
+      }
     }
   }
 

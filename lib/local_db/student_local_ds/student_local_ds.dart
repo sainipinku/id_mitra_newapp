@@ -138,7 +138,7 @@ class StudentLocalDS {
   }) async {
     final db = await DBHelper.db;
 
-    String where = "is_extra = 0 AND is_delete_pending_sync = 0";
+    String where = "is_extra = 0 AND is_delete_pending_sync = 0 AND is_offline = 0 AND is_offline_update = 0";
     List<dynamic> args = [];
 
     /// School Filter
@@ -161,8 +161,18 @@ class StudentLocalDS {
 
     /// Class Filter
     if (classId.isNotEmpty) {
-      where += " AND school_class_id = ?";
-      args.add(int.parse(classId));
+      final classIds = classId
+          .split(',')
+          .map((e) => int.tryParse(e.trim()))
+          .where((e) => e != null)
+          .toList();
+      if (classIds.length == 1) {
+        where += " AND school_class_id = ?";
+        args.add(classIds.first);
+      } else if (classIds.length > 1) {
+        where += " AND school_class_id IN (${classIds.map((_) => '?').join(',')})";
+        args.addAll(classIds);
+      }
     }
 
     /// Section Filter
@@ -209,7 +219,7 @@ class StudentLocalDS {
 
     String where = includeExtra
         ? "is_delete_pending_sync = 0"
-        : "is_extra = 0 AND is_delete_pending_sync = 0";
+        : "is_extra = 0 AND is_delete_pending_sync = 0 AND is_offline = 0 AND is_offline_update = 0";
     List<dynamic> args = [];
 
     if (schoolId.isNotEmpty) {
@@ -228,8 +238,18 @@ class StudentLocalDS {
     }
 
     if (classId.isNotEmpty) {
-      where += " AND school_class_id = ?";
-      args.add(int.parse(classId));
+      final classIds = classId
+          .split(',')
+          .map((e) => int.tryParse(e.trim()))
+          .where((e) => e != null)
+          .toList();
+      if (classIds.length == 1) {
+        where += " AND school_class_id = ?";
+        args.add(classIds.first);
+      } else if (classIds.length > 1) {
+        where += " AND school_class_id IN (${classIds.map((_) => '?').join(',')})";
+        args.addAll(classIds);
+      }
     }
 
     if (sectionIds.isNotEmpty) {

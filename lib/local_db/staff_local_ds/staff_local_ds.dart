@@ -213,4 +213,20 @@ class StaffLocalDS {
     map["assigned_classes"] = jsonDecode(map["assigned_classes_json"] ?? "[]");
     return StaffListModel.fromJson(map);
   }
+
+  /// 🔍 FETCH STAFF BY UUIDS
+  Future<List<StaffListModel>> getStaffByUuids(List<String> uuids) async {
+    if (uuids.isEmpty) return [];
+    final db = await DBHelper.db;
+    final data = await db.query(
+      "staff",
+      where: "uuid IN (${uuids.map((_) => '?').join(',')})",
+      whereArgs: uuids,
+    );
+    return data.map((e) {
+      final map = Map<String, dynamic>.from(e);
+      map["assigned_classes"] = jsonDecode(map["assigned_classes_json"] ?? "[]");
+      return StaffListModel.fromJson(map);
+    }).toList();
+  }
 }

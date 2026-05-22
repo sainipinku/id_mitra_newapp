@@ -139,7 +139,7 @@ class StudentsCubit extends Cubit<StudentsState> {
     int offset = (currentPage - 1) * perPage;
 
     if (!isLoadMore) {
-      emit(state.copyWith(loading: true, page: 1, hasMore: true));
+      emit(state.copyWith(loading: true, page: 1, hasMore: true, studentsList: []));
     } else {
       emit(state.copyWith(isPaginationLoading: true));
     }
@@ -1238,3 +1238,4 @@ class StudentsCubit extends Cubit<StudentsState> {
     };
   }
 }
+

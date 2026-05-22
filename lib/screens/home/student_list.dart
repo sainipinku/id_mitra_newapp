@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -444,12 +445,15 @@ class _StudentsTabState extends State<_StudentsTab> {
           ),
           Expanded(
             child: RefreshIndicator(
-              onRefresh: () async => context.read<StudentsCubit>().fetchStudents(
-                search: '',
-                schoolId: widget.schoolId,
-                gender: '',
-                classId: '',
-              ),
+              onRefresh: () async {
+                _searchCtrl.clear();
+                context.read<StudentsCubit>().applyFilters(
+                  schoolId: widget.schoolId,
+                  classId: '',
+                  gender: '',
+                  sectionIds: [],
+                );
+              },
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -668,42 +672,16 @@ class _StudentsTabState extends State<_StudentsTab> {
                                 final isSelected = student.id != null &&
                                     _selectedIds.contains(student.id);
 
-                                return Row(
-                                  crossAxisAlignment:
-                                  CrossAxisAlignment.center,
-                                  children: [
-                                    GestureDetector(
-                                      onTap: () => _toggleSelect(student),
-                                      behavior: HitTestBehavior.opaque,
-                                      child: Padding(
-                                        padding: const EdgeInsets.fromLTRB(
-                                            0, 0, 4, 0),
-                                        child: Checkbox(
-                                          value: isSelected,
-                                          onChanged: (_) =>
-                                              _toggleSelect(student),
-                                          activeColor: AppTheme.btnColor,
-                                          shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                              BorderRadius.circular(4)),
-                                          side: BorderSide(
-                                              color: AppTheme
-                                                  .graySubTitleColor),
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: StudentCard(
-                                        key: ValueKey(student.uuid),
-                                        studentData: student,
-                                        schoolId: widget.schoolId,
-                                        schoolIntId:
-                                        widget.schoolDetailsModel?.id ??
-                                            student.schoolId,
-                                        imageShape: imageShape,
-                                      ),
-                                    ),
-                                  ],
+                                return StudentCard(
+                                  key: ValueKey(student.uuid),
+                                  studentData: student,
+                                  schoolId: widget.schoolId,
+                                  schoolIntId:
+                                  widget.schoolDetailsModel?.id ??
+                                      student.schoolId,
+                                  imageShape: imageShape,
+                                  isSelected: isSelected,
+                                  onToggle: () => _toggleSelect(student),
                                 );
                               }
                               return const Padding(
@@ -1079,10 +1057,12 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
 
                   return RefreshIndicator(
                     color: AppTheme.btnColor,
-                    onRefresh: () async => context
-                        .read<CorrectionCubit>()
-                        .fetchCorrectionStudents(
-                        schoolId: widget.schoolId),
+                    onRefresh: () async {
+                      _searchCtrl.clear();
+                      context.read<CorrectionCubit>().fetchCorrectionStudents(
+                        schoolId: widget.schoolId,
+                      );
+                    },
                     child: Column(
                       children: [
                         if (!_isGridView &&
@@ -1423,7 +1403,7 @@ class _CorrectionCardState extends State<_CorrectionCard> {
   void initState() {
     super.initState();
     final s = widget.item.student;
-    _currentPhotoUrl = s?.photoUrl ?? s?.photo ?? '';
+    _currentPhotoUrl = s?.photoUrl ?? s?.photo ?? s?.profilePhotoUrl ?? '';
   }
 
   Future<void> _fromCamera() async {
@@ -1620,22 +1600,35 @@ class _CorrectionCardState extends State<_CorrectionCard> {
   }
 
   Widget _buildShapedPreview(String imageUrl, String shape) {
-    final imageWidget = Image.network(
-      imageUrl,
-      width: double.infinity,
-      fit: BoxFit.contain,
-      loadingBuilder: (_, child, progress) => progress == null
-          ? child
-          : const SizedBox(
-          height: 300,
-          child: Center(child: CircularProgressIndicator())),
-      errorBuilder: (_, __, ___) => Container(
-        height: 300,
+    final Widget imageWidget;
+    if (imageUrl.startsWith('/') || imageUrl.startsWith('file://')) {
+      imageWidget = Image.file(
+        File(imageUrl),
         width: double.infinity,
-        color: Colors.grey.shade300,
-        child: const Icon(Icons.person, size: 80, color: Colors.grey),
-      ),
-    );
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => Container(
+          height: 300,
+          width: double.infinity,
+          color: Colors.grey.shade300,
+          child: const Icon(Icons.person, size: 80, color: Colors.grey),
+        ),
+      );
+    } else {
+      imageWidget = CachedNetworkImage(
+        imageUrl: imageUrl,
+        width: double.infinity,
+        fit: BoxFit.contain,
+        placeholder: (_, __) => const SizedBox(
+            height: 300,
+            child: Center(child: CircularProgressIndicator())),
+        errorWidget: (_, __, ___) => Container(
+          height: 300,
+          width: double.infinity,
+          color: Colors.grey.shade300,
+          child: const Icon(Icons.person, size: 80, color: Colors.grey),
+        ),
+      );
+    }
     switch (shape) {
       case 'round':
       case 'oval':
@@ -1660,11 +1653,17 @@ class _CorrectionCardState extends State<_CorrectionCard> {
         child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
       );
     } else if (photoUrl.isNotEmpty) {
-      content = Image.network(photoUrl,
-          height: 60,
-          width: 60,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _placeholder());
+      if (photoUrl.startsWith('/') || photoUrl.startsWith('file://')) {
+        content = Image.file(File(photoUrl),
+            height: 60, width: 60, fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _placeholder());
+      } else {
+        content = CachedNetworkImage(
+            imageUrl: photoUrl,
+            height: 60, width: 60, fit: BoxFit.cover,
+            errorWidget: (_, __, ___) => _placeholder(),
+            placeholder: (_, __) => _placeholder());
+      }
     } else {
       content = _placeholder();
     }
@@ -2533,9 +2532,6 @@ class _OrdersTabState extends State<_OrdersTab> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// ORDER CARD
-// ─────────────────────────────────────────────────────────────
 
 class _OrderCard extends StatefulWidget {
   final OrderModel order;
@@ -2746,7 +2742,7 @@ class _OrderCardState extends State<_OrderCard> {
                           size: 10,
                           color: AppTheme.graySubTitleColor),
                       const SizedBox(width: 3),
-                      Text(widget.order.orderedAt,
+                      Text(widget.order.formattedOrderedAt,
                           style: MyStyles.regularText(
                               size: 10,
                               color: AppTheme.graySubTitleColor)),

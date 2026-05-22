@@ -30,6 +30,8 @@ class StudentCard extends StatefulWidget {
   final String? imageShape;
   final int? schoolIntId;
   final VoidCallback? onEdit;
+  final bool isSelected;
+  final VoidCallback? onToggle;
 
   StudentCard({
     super.key,
@@ -38,6 +40,8 @@ class StudentCard extends StatefulWidget {
     this.imageShape,
     this.schoolIntId,
     this.onEdit,
+    this.isSelected = false,
+    this.onToggle,
   });
 
   @override
@@ -353,21 +357,49 @@ class _StudentCardState extends State<StudentCard> {
       }
     } catch (_) {}
 
-    return GestureDetector(
-      onTap: () {
-        _openEditScreen(context);
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: widget.isSelected
+            ? AppTheme.btnColor.withOpacity(0.06)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: widget.isSelected ? AppTheme.btnColor : Colors.transparent,
+          width: 1.5,
         ),
-        child: Row(
-          children: [
-            /// 👤 PROFILE IMAGE
-            Stack(
+      ),
+      child: Row(
+        children: [
+          if (widget.onToggle != null)
+            GestureDetector(
+              onTap: widget.onToggle,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(0, 0, 8, 0),
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: Checkbox(
+                    value: widget.isSelected,
+                    onChanged: (_) => widget.onToggle!(),
+                    activeColor: AppTheme.btnColor,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4)),
+                    side: BorderSide(color: AppTheme.graySubTitleColor),
+                  ),
+                ),
+              ),
+            ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _openEditScreen(context),
+              behavior: HitTestBehavior.opaque,
+              child: Row(
+                children: [
+                  /// 👤 PROFILE IMAGE
+                  Stack(
               children: [
                 GestureDetector(
                   onTap: () {
@@ -619,8 +651,11 @@ class _StudentCardState extends State<StudentCard> {
                 ),
               ],
             ),
-          ],
-        ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

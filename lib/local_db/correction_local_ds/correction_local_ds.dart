@@ -36,7 +36,7 @@ class CorrectionLocalDS {
           "father_phone": student?.fatherPhone,
           "mother_name": student?.motherName,
           "mother_phone": student?.motherPhone,
-          "school_class_id": student?.schoolClassId,
+          "school_class_id": student?.schoolClassId ?? student?.studentClass?.id,
           "school_class_section_id": student?.schoolClassSectionId,
           "profile_photo_url": student?.profilePhotoUrl,
           "class_json": jsonEncode(student?.studentClass?.toJson() ?? {}),
@@ -74,8 +74,18 @@ class CorrectionLocalDS {
 
     /// Class Filter
     if (classId.isNotEmpty) {
-      where += " AND school_class_id = ?";
-      args.add(int.parse(classId));
+      final classIds = classId
+          .split(',')
+          .map((e) => int.tryParse(e.trim()))
+          .where((e) => e != null)
+          .toList();
+      if (classIds.length == 1) {
+        where += " AND school_class_id = ?";
+        args.add(classIds.first);
+      } else if (classIds.length > 1) {
+        where += " AND school_class_id IN (${classIds.map((_) => '?').join(',')})";
+        args.addAll(classIds);
+      }
     }
 
     /// Section Filter
@@ -159,8 +169,18 @@ class CorrectionLocalDS {
     }
 
     if (classId.isNotEmpty) {
-      where += " AND school_class_id = ?";
-      args.add(int.parse(classId));
+      final classIds = classId
+          .split(',')
+          .map((e) => int.tryParse(e.trim()))
+          .where((e) => e != null)
+          .toList();
+      if (classIds.length == 1) {
+        where += " AND school_class_id = ?";
+        args.add(classIds.first);
+      } else if (classIds.length > 1) {
+        where += " AND school_class_id IN (${classIds.map((_) => '?').join(',')})";
+        args.addAll(classIds);
+      }
     }
 
     if (sectionIds.isNotEmpty) {
@@ -172,11 +192,13 @@ class CorrectionLocalDS {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
+  ///  CLEAR ALL FOR SCHOOL
   Future<void> clearForSchool(String schoolId) async {
     final db = await DBHelper.db;
     await db.delete('correction_students', where: 'school_id = ?', whereArgs: [int.tryParse(schoolId) ?? 0]);
   }
 
+  ///  SAVE PENDING CHECKLIST
   Future<void> savePendingChecklist({
     required String schoolId,
     required String processType,
@@ -193,21 +215,48 @@ class CorrectionLocalDS {
       'card_type': cardType,
       'card_for': jsonEncode(cardFor),
       'students_json': jsonEncode(studentUuids),
+      'staff_json': null,
       'created_at': DateTime.now().millisecondsSinceEpoch,
     });
     print("Saved pending checklist locally for school: $schoolId");
   }
 
+  ///  SAVE PENDING STAFF CHECKLIST (offline staff process checklist)
+  Future<void> savePendingStaffChecklist({
+    required String schoolId,
+    required String processType,
+    required String listType,
+    String cardType = '',
+    List<String> cardFor = const [],
+    required List<String> staffUuids,
+  }) async {
+    final db = await DBHelper.db;
+    await db.insert('pending_checklists', {
+      'school_id': schoolId,
+      'process_type': processType,
+      'list_type': listType,
+      'card_type': cardType,
+      'card_for': jsonEncode(cardFor),
+      'students_json': null,
+      'staff_json': jsonEncode(staffUuids),
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+    });
+    print("Saved pending staff checklist locally for school: $schoolId");
+  }
+
+  ///  FETCH ALL PENDING CHECKLISTS
   Future<List<Map<String, dynamic>>> getAllPendingChecklists() async {
     final db = await DBHelper.db;
     return await db.query('pending_checklists', orderBy: 'created_at ASC');
   }
 
+  /// 🗑️ DELETE PENDING CHECKLIST
   Future<void> deletePendingChecklist(int id) async {
     final db = await DBHelper.db;
     await db.delete('pending_checklists', where: 'id = ?', whereArgs: [id]);
   }
 
+  /// 📥 SAVE PENDING ORDER
   Future<void> savePendingOrder({
     required String schoolId,
     required String cardType,
@@ -227,6 +276,7 @@ class CorrectionLocalDS {
     print("Saved pending order locally for school: $schoolId");
   }
 
+  /// 🔍 FETCH ALL PENDING ORDERS
   Future<List<Map<String, dynamic>>> getAllPendingOrders({String? schoolId}) async {
     final db = await DBHelper.db;
     if (schoolId != null) {
@@ -235,11 +285,13 @@ class CorrectionLocalDS {
     return await db.query('pending_orders', orderBy: 'created_at ASC');
   }
 
+  /// 🗑️ DELETE PENDING ORDER
   Future<void> deletePendingOrder(int id) async {
     final db = await DBHelper.db;
     await db.delete('pending_orders', where: 'id = ?', whereArgs: [id]);
   }
 
+  /// 📥 SAVE PENDING DOWNLOAD
   Future<void> savePendingDownload({
     required String schoolId,
     required String listType,
@@ -255,16 +307,19 @@ class CorrectionLocalDS {
     print("Saved pending download locally for school: $schoolId");
   }
 
+  /// 🔍 FETCH ALL PENDING DOWNLOADS
   Future<List<Map<String, dynamic>>> getAllPendingDownloads() async {
     final db = await DBHelper.db;
     return await db.query('pending_downloads', orderBy: 'created_at ASC');
   }
 
+  /// 🗑️ DELETE PENDING DOWNLOAD
   Future<void> deletePendingDownload(int id) async {
     final db = await DBHelper.db;
     await db.delete('pending_downloads', where: 'id = ?', whereArgs: [id]);
   }
 
+  /// 📥 SAVE DOWNLOAD COLUMNS
   Future<void> saveDownloadColumns(String schoolId, List<DownloadColumn> columns) async {
     final db = await DBHelper.db;
     final jsonList = columns.map((e) => {'key': e.key, 'label': e.label}).toList();
@@ -279,6 +334,7 @@ class CorrectionLocalDS {
     );
   }
 
+  /// 🔍 FETCH DOWNLOAD COLUMNS
   Future<List<DownloadColumn>> getDownloadColumns(String schoolId) async {
     final db = await DBHelper.db;
     final data = await db.query('download_columns', where: 'school_id = ?', whereArgs: [schoolId]);

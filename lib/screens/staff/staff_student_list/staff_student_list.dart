@@ -3528,7 +3528,7 @@ class _StaffOrderCardState extends State<_StaffOrderCard> {
                               size: 10,
                               color: AppTheme.graySubTitleColor),
                           const SizedBox(width: 3),
-                          Text(widget.order.orderedAt,
+                          Text(widget.order.formattedOrderedAt,
                               style: MyStyles.regularText(
                                   size: 10,
                                   color: AppTheme.graySubTitleColor)),

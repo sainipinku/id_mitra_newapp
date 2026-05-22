@@ -26,8 +26,17 @@ class OrdersCubit extends Cubit<OrdersState> {
       final hasInternet = !results.contains(ConnectivityResult.none);
       if (hasInternet) {
         syncPendingStatusUpdates();
+        syncPendingOrders();
       }
     });
+    _initSync();
+  }
+
+  Future<void> _initSync() async {
+    if (await _hasInternet()) {
+      await syncPendingOrders();
+      await syncPendingStatusUpdates();
+    }
   }
 
   @override
@@ -120,7 +129,6 @@ class OrdersCubit extends Cubit<OrdersState> {
         final classesJson = jsonDecode(row['classes_json'] as String? ?? '[]') as List;
         final List<OrderClass> localClasses = _parseClasses(classesJson);
         if (localClasses.isNotEmpty) {
-          debugPrint('fetchSchoolClasses: Loaded ${localClasses.length} classes from local DB');
           emit(state.copyWith(
             availableClasses: _sortClasses(localClasses),
             classesLoading: false,
@@ -131,7 +139,7 @@ class OrdersCubit extends Cubit<OrdersState> {
         }
       }
     } catch (e) {
-      debugPrint('fetchSchoolClasses local load error: $e');
+      print('fetchSchoolClasses local load error: $e');
     }
 
     // ── STEP 2: Fetch from API if no local data ──
@@ -165,15 +173,15 @@ class OrdersCubit extends Cubit<OrdersState> {
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
-        debugPrint('fetchSchoolClasses: Saved fresh classes to local DB');
+        print('fetchSchoolClasses: Saved fresh classes to local DB');
       } catch (e) {
-        debugPrint('fetchSchoolClasses local save error: $e');
+        print('fetchSchoolClasses local save error: $e');
       }
 
       final List<OrderClass> classes = _parseClasses(rawClasses);
       emit(state.copyWith(availableClasses: _sortClasses(classes), classesLoading: false));
     } catch (e) {
-      debugPrint('fetchSchoolClasses API sync error: $e');
+      print('fetchSchoolClasses API sync error: $e');
       if (emitLoading) emit(state.copyWith(classesLoading: false));
     }
   }
@@ -223,12 +231,11 @@ class OrdersCubit extends Cubit<OrdersState> {
     return classes;
   }
 
-  // ─── Fetch school-specific orders (auth/school/{id}/orders) ─────────────
   Future<void> fetchSchoolOrders({
     bool isLoadMore = false,
     String search = '',
     String status = '',
-    String classFilter = '',  // value like "2486-1246" (classId-sectionId)
+    String classFilter = '',
     String dateFrom = '',
     String dateTo = '',
     required String schoolId,
@@ -286,10 +293,10 @@ class OrdersCubit extends Cubit<OrdersState> {
       );
 
       if (localOrders.isNotEmpty || pendingOrders.isNotEmpty || localClasses.isNotEmpty) {
-        final List<OrderModel> combinedLocal = isLoadMore 
-            ? [...state.ordersList, ...localOrders] 
+        final List<OrderModel> combinedLocal = isLoadMore
+            ? [...state.ordersList, ...localOrders]
             : [...pendingOrders, ...localOrders];
-        
+
         bool hasMoreLocal = (combinedLocal.length - pendingOrders.length) < totalLocalCount;
 
         emit(state.copyWith(
@@ -344,9 +351,9 @@ class OrdersCubit extends Cubit<OrdersState> {
 
       final ordersData = data['orders'] ?? data;
       final List rawList = ordersData['data'] ?? [];
-      final int total = ordersData['total'] ?? 0;
-      final int lastPage = ordersData['last_page'] ?? 1;
-      final int respPage = ordersData['current_page'] ?? 1;
+      final int total = int.tryParse(ordersData['total']?.toString() ?? '0') ?? 0;
+      final int lastPage = int.tryParse(ordersData['last_page']?.toString() ?? '1') ?? 1;
+      final int respPage = int.tryParse(ordersData['current_page']?.toString() ?? '1') ?? 1;
 
       final apiOrders = rawList.map((e) => OrderModel.fromJson(e as Map<String, dynamic>)).toList();
 
@@ -384,7 +391,6 @@ class OrdersCubit extends Cubit<OrdersState> {
     }
   }
 
-  // ─── Fetch orders list ────────────────────────────────────────────────────
   Future<void> fetchOrders({
     bool isLoadMore = false,
     String search = '',
@@ -395,7 +401,6 @@ class OrdersCubit extends Cubit<OrdersState> {
     String schoolId = '',
     bool isSchool = false,
   }) async {
-    // For fresh fetch (not load more), always allow — reset any stuck state
     if (isLoadMore && (state.isPaginationLoading || !state.hasMore)) return;
 
     const int perPage = 50;
@@ -455,10 +460,10 @@ class OrdersCubit extends Cubit<OrdersState> {
       );
 
       if (localOrders.isNotEmpty || pendingOrders.isNotEmpty || localClasses.isNotEmpty) {
-        final List<OrderModel> combinedLocal = isLoadMore 
-            ? [...state.ordersList, ...localOrders] 
+        final List<OrderModel> combinedLocal = isLoadMore
+            ? [...state.ordersList, ...localOrders]
             : [...pendingOrders, ...localOrders];
-        
+
         bool hasMoreLocal = (combinedLocal.length - pendingOrders.length) < totalLocalCount;
 
         emit(state.copyWith(
@@ -485,10 +490,8 @@ class OrdersCubit extends Cubit<OrdersState> {
 
       String url;
       if (schoolId.isNotEmpty) {
-        // Both school admin and partner viewing a school: use partner orders endpoint with school_id filter
         url = '${Config.baseUrl}auth/partner/orders?page=$currentPage&per_page=$perPage&school_id=$schoolId';
       } else {
-        // Partner: all orders without school filter
         url = '${Config.baseUrl}auth/partner/orders?page=$currentPage&per_page=$perPage';
       }
       if (status.isNotEmpty) url += '&status=$status';
@@ -505,9 +508,9 @@ class OrdersCubit extends Cubit<OrdersState> {
 
       final json = jsonDecode(response.body);
       final List rawList = json['data']?['data'] ?? [];
-      final int total = json['data']?['total'] ?? 0;
-      final int lastPage = json['data']?['last_page'] ?? 1;
-      final int respPage = json['data']?['current_page'] ?? 1;
+      final int total = int.tryParse(json['data']?['total']?.toString() ?? '0') ?? 0;
+      final int lastPage = int.tryParse(json['data']?['last_page']?.toString() ?? '1') ?? 1;
+      final int respPage = int.tryParse(json['data']?['current_page']?.toString() ?? '1') ?? 1;
 
       final apiOrders =
           rawList.map((e) => OrderModel.fromJson(e as Map<String, dynamic>)).toList();
@@ -540,11 +543,11 @@ class OrdersCubit extends Cubit<OrdersState> {
   Future<bool> updateOrderStatus(String uuid, String newStatus, {String schoolId = '', bool isSchool = false}) async {
     try {
       bool hasInternet = await _hasInternet();
-      
+
       if (!hasInternet) {
         final school = await UserLocal.getSchool();
         final effectiveSchoolId = schoolId.isNotEmpty ? schoolId : (school['schoolId'] ?? '').toString();
-        
+
         await _orderLocalDS.savePendingStatusUpdate(
           schoolId: effectiveSchoolId,
           uuids: [uuid],
@@ -561,14 +564,13 @@ class OrdersCubit extends Cubit<OrdersState> {
           return o;
         }).toList();
         emit(state.copyWith(ordersList: updatedOrders));
-        
+
         return true;
       }
 
-      // Always use partner endpoint — school-scoped route does not exist on backend
       final url = '${Config.baseUrl}auth/partner/orders/$uuid/status';
       final response = await _api.patchRequestWithBody(url, {'status': newStatus});
-      
+
       if (response == null || response.statusCode < 200 || response.statusCode >= 300) {
         // Fallback to offline if server error or null response
         final school = await UserLocal.getSchool();
@@ -583,7 +585,7 @@ class OrdersCubit extends Cubit<OrdersState> {
 
       final json = jsonDecode(response.body);
       if (json['success'] == true) return true;
-      
+
       return false;
     } catch (e) {
       print('updateOrderStatus error: $e');
@@ -659,9 +661,9 @@ class OrdersCubit extends Cubit<OrdersState> {
       final statusBody = <String, dynamic>{'status': status};
       if (issueNote.isNotEmpty) statusBody['issueNote'] = issueNote;
       final body = <String, dynamic>{'uuids': uuids, 'status': statusBody};
-      
+
       final response = await _api.patchRequestWithBody(url, body);
-      
+
       if (response == null || response.statusCode < 200 || response.statusCode >= 300) {
         await _orderLocalDS.savePendingStatusUpdate(
           schoolId: schoolId,
@@ -729,7 +731,7 @@ class OrdersCubit extends Cubit<OrdersState> {
           if (issueNote.isNotEmpty) 'issueNote': issueNote,
         },
       };
-      
+
       final response = await _api.patchRequestWithBody(url, body);
 
       if (response == null || response.statusCode < 200 || response.statusCode >= 300) {
@@ -745,7 +747,6 @@ class OrdersCubit extends Cubit<OrdersState> {
       final json = jsonDecode(response.body);
       return json['success'] == true;
     } catch (e) {
-      print('reOrderWithPrintingIssue error: $e');
       try {
         await _orderLocalDS.savePendingStatusUpdate(
           schoolId: schoolId,
@@ -766,7 +767,6 @@ class OrdersCubit extends Cubit<OrdersState> {
     final pending = await _orderLocalDS.getAllPendingStatusUpdates();
     if (pending.isEmpty) return;
 
-    print("Syncing ${pending.length} pending status updates...");
 
     for (var item in pending) {
       try {
@@ -785,14 +785,14 @@ class OrdersCubit extends Cubit<OrdersState> {
           final json = jsonDecode(response.body);
           if (json['success'] == true) {
             await _orderLocalDS.deletePendingStatusUpdate(item['id']);
-            print("Successfully synced pending status update ID: ${item['id']}");
+            print("Successfully pending status: ${item['id']}");
           }
         }
       } catch (e) {
         print("Error syncing pending status update: $e");
       }
     }
-    
+
     // Refresh orders after sync
     final school = await UserLocal.getSchool();
     final currentSchoolId = school['schoolId'];
@@ -802,6 +802,98 @@ class OrdersCubit extends Cubit<OrdersState> {
   }
 
 
+
+  Future<void> syncPendingOrders() async {
+    if (!await _hasInternet()) return;
+
+    final pendingChecklists = await _localDS.getAllPendingChecklists();
+    if (pendingChecklists.isNotEmpty) {
+      print("OrdersCubit: Pending checklists found, waiting 6s for checklist sync to finish...");
+      await Future.delayed(const Duration(seconds: 6));
+      final stillPending = await _localDS.getAllPendingChecklists();
+      if (stillPending.isNotEmpty) {
+        print("OrdersCubit: Checklists still pending after wait, deferring order sync");
+        return;
+      }
+    }
+
+    final pending = await _localDS.getAllPendingOrders();
+    if (pending.isEmpty) return;
+
+    print("OrdersCubit: Syncing ${pending.length} pending orders...");
+    bool anySynced = false;
+
+    for (var item in pending) {
+      try {
+        final schoolId = item['school_id'];
+        final cardType = item['card_type'];
+        final cardFor = List<String>.from(jsonDecode(item['card_for_json'] ?? '[]'));
+        var cardUsers = List<String>.from(jsonDecode(item['card_users_json'] ?? '[]'));
+
+        // Resolve student UUIDs → correction list item UUIDs using local DB
+        try {
+          final correctionStudents = await _localDS.getCorrectionStudents(schoolId: schoolId);
+          final Map<String, String> studentToItemUuid = {};
+          for (final s in correctionStudents) {
+            if (s.student?.uuid != null && s.uuid != null && s.uuid!.trim().isNotEmpty) {
+              studentToItemUuid[s.student!.uuid!.trim()] = s.uuid!.trim();
+            }
+          }
+          if (studentToItemUuid.isNotEmpty) {
+            cardUsers = cardUsers.map((uuid) => studentToItemUuid[uuid] ?? uuid).toList();
+          }
+        } catch (_) {}
+
+        final String url = '${Config.baseUrl}auth/school/$schoolId/orders';
+        final Map<String, dynamic> body = {
+          "card_users": cardUsers,
+          "card_type": cardType,
+          "student_card": cardFor.contains('student_card') ? 1 : 0,
+          "parent_card": cardFor.contains('parent_card') ? 1 : 0,
+          "admit_card": cardFor.contains('admit_card') ? 1 : 0,
+        };
+
+        var response = await _api.postRequest(body, url);
+
+        // 403 fallback to partner URL
+        if (response != null && response.statusCode == 403) {
+          final partnerUrl = '${Config.baseUrl}auth/partner/school/$schoolId/orders';
+          response = await _api.postRequest(body, partnerUrl);
+        }
+
+        if (response != null && response.statusCode >= 200 && response.statusCode < 300) {
+          final json = jsonDecode(response.body);
+          if (json['success'] == true) {
+            await _localDS.deletePendingOrder(item['id']);
+            anySynced = true;
+          } else {
+            // Server rejected — invalid UUID or data, delete so it doesn't block forever
+            await _localDS.deletePendingOrder(item['id']);
+            anySynced = true;
+          }
+        } else if (response != null && (response.statusCode == 422 || response.statusCode == 400 || response.statusCode == 500)) {
+          // Permanent server rejection — delete to prevent infinite retry
+          await _localDS.deletePendingOrder(item['id']);
+          anySynced = true;
+        } else {
+        }
+      } catch (e) {
+      }
+    }
+
+    if (anySynced) {
+      final updatedOrders = state.ordersList
+          .where((o) => !o.uuid.startsWith('offline_'))
+          .toList();
+      if (updatedOrders.length != state.ordersList.length) {
+        emit(state.copyWith(ordersList: updatedOrders));
+      }
+      // Refresh from server using the school endpoint (matches what the UI loaded)
+      if (state.schoolId.isNotEmpty) {
+        fetchSchoolOrders(schoolId: state.schoolId);
+      }
+    }
+  }
 
   Future<void> fetchStaffOrdersTotal({required String schoolId}) async {
     if (schoolId.isEmpty) return;
@@ -819,22 +911,18 @@ class OrdersCubit extends Cubit<OrdersState> {
       final data = json['data'] as Map<String, dynamic>?;
       int total = 0;
       if (data != null) {
-        // Format: { list: { data: [...], total: N, ... } }
         if (data['list'] is Map) {
           final listData = data['list'] as Map<String, dynamic>;
           total = listData['total'] ?? 0;
         }
-        // Format: { orders: [...], pagination: { total: N } }
         else if (data['orders'] is List) {
           final pagination = data['pagination'] as Map<String, dynamic>?;
           total = pagination?['total'] ?? (data['orders'] as List).length;
         }
-        // Format: { orders: { data: [...], total: N } }
         else if (data['orders'] is Map) {
           final ordersData = data['orders'] as Map<String, dynamic>;
           total = ordersData['total'] ?? 0;
         }
-        // Format: { data: [...], total: N }
         else if (data['total'] != null) {
           total = data['total'] ?? 0;
         }

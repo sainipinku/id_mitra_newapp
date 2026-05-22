@@ -472,13 +472,15 @@ class _AdminStudentsTabState extends State<_AdminStudentsTab> {
           ),
           Expanded(
             child: RefreshIndicator(
-              onRefresh: () async =>
-                  context.read<StudentsCubit>().fetchStudents(
-                    search: '',
-                    schoolId: widget.schoolId,
-                    gender: '',
-                    classId: '',
-                  ),
+              onRefresh: () async {
+                _searchCtrl.clear();
+                context.read<StudentsCubit>().applyFilters(
+                  schoolId: widget.schoolId,
+                  classId: '',
+                  gender: '',
+                  sectionIds: [],
+                );
+              },
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -563,17 +565,24 @@ class _AdminStudentsTabState extends State<_AdminStudentsTab> {
                               final String? gender = result['gender']
                                   ?.toString()
                                   .toLowerCase();
+                              final List<int> sectionIds =
+                              result['section'] is List
+                                  ? List<int>.from(
+                                  (result['section'] as List)
+                                      .map((e) =>
+                                  int.tryParse(e.toString()) ?? 0)
+                                      .where((e) => e != 0))
+                                  : [];
                               _debounce?.cancel();
                               _debounce = Timer(
                                   const Duration(milliseconds: 500), () {
                                 context
                                     .read<StudentsCubit>()
-                                    .fetchStudents(
-                                  search: '',
+                                    .applyFilters(
                                   schoolId: widget.schoolId,
                                   classId: classId ?? '',
                                   gender: gender ?? '',
-                                  sectionIds: result['section'] ?? [],
+                                  sectionIds: sectionIds,
                                 );
                               });
                             }
@@ -671,39 +680,13 @@ class _AdminStudentsTabState extends State<_AdminStudentsTab> {
                                 } catch (_) {}
                                 final isSelected = student.id != null &&
                                     _selectedIds.contains(student.id);
-                                return Row(
-                                  crossAxisAlignment:
-                                  CrossAxisAlignment.center,
-                                  children: [
-                                    GestureDetector(
-                                      onTap: () => _toggleSelect(student),
-                                      behavior: HitTestBehavior.opaque,
-                                      child: Padding(
-                                        padding: const EdgeInsets.fromLTRB(
-                                            0, 0, 4, 0),
-                                        child: Checkbox(
-                                          value: isSelected,
-                                          onChanged: (_) =>
-                                              _toggleSelect(student),
-                                          activeColor: AppTheme.btnColor,
-                                          shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                              BorderRadius.circular(4)),
-                                          side: BorderSide(
-                                              color: AppTheme
-                                                  .graySubTitleColor),
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: StudentCard(
-                                        key: ValueKey(student.uuid),
-                                        studentData: student,
-                                        schoolId: widget.schoolId,
-                                        imageShape: imageShape,
-                                      ),
-                                    ),
-                                  ],
+                                return StudentCard(
+                                  key: ValueKey(student.uuid),
+                                  studentData: student,
+                                  schoolId: widget.schoolId,
+                                  imageShape: imageShape,
+                                  isSelected: isSelected,
+                                  onToggle: () => _toggleSelect(student),
                                 );
                               }
                               return const Padding(
@@ -1105,10 +1088,12 @@ class _AdminCorrectionTabState extends State<_AdminCorrectionTab> {
 
                   return RefreshIndicator(
                     color: AppTheme.btnColor,
-                    onRefresh: () async => context
-                        .read<CorrectionCubit>()
-                        .fetchCorrectionStudents(
-                        schoolId: widget.schoolId),
+                    onRefresh: () async {
+                      _searchCtrl.clear();
+                      context.read<CorrectionCubit>().fetchCorrectionStudents(
+                        schoolId: widget.schoolId,
+                      );
+                    },
                     child: Column(
                       children: [
                         if (!_isGridView &&
@@ -1205,6 +1190,7 @@ class _AdminCorrectionTabState extends State<_AdminCorrectionTab> {
                                   return const SizedBox.shrink();
                                 }
                                 return Padding(
+                                  key: ValueKey(item.id),
                                   padding: const EdgeInsets.only(
                                       bottom: 20),
                                   child: Center(
@@ -1246,6 +1232,7 @@ class _AdminCorrectionTabState extends State<_AdminCorrectionTab> {
                                     .selectedStudentIds
                                     .contains(item.id);
                                 return _AdminCorrectionCard(
+                                  key: ValueKey(item.id),
                                   item: item,
                                   isSelected: isSelected,
                                   imageShape: imageShape,
@@ -1422,6 +1409,7 @@ class _AdminCorrectionCard extends StatefulWidget {
   final String? imageShape;
 
   const _AdminCorrectionCard({
+    super.key,
     required this.item,
     required this.isSelected,
     required this.onToggle,
@@ -1442,6 +1430,15 @@ class _AdminCorrectionCardState extends State<_AdminCorrectionCard> {
     super.initState();
     final s = widget.item.student;
     _currentPhotoUrl = s?.photoUrl ?? s?.photo ?? '';
+  }
+
+  @override
+  void didUpdateWidget(covariant _AdminCorrectionCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.item.id != widget.item.id) {
+      final s = widget.item.student;
+      setState(() => _currentPhotoUrl = s?.photoUrl ?? s?.photo ?? '');
+    }
   }
 
   Future<void> _fromCamera() async {
@@ -3639,7 +3636,7 @@ class _AdminOrderCardState extends State<_AdminOrderCard> {
                           size: 10,
                           color: AppTheme.graySubTitleColor),
                       const SizedBox(width: 3),
-                      Text(widget.order.orderedAt,
+                      Text(widget.order.formattedOrderedAt,
                           style: MyStyles.regularText(
                               size: 10,
                               color: AppTheme.graySubTitleColor)),

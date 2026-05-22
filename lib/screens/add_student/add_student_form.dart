@@ -969,7 +969,6 @@ class _AddStudentFormPageState extends State<AddStudentFormPage>
           );
         }
 
-        // selected section
         final int? selectedSectionId =
         _toInt(_selectVal['class_section']);
 
@@ -1007,8 +1006,6 @@ class _AddStudentFormPageState extends State<AddStudentFormPage>
 
           showClearButton: false,
         );
-
-    // ================= DEFAULT =================
 
       default:
         return _stringDropdown(
@@ -1212,23 +1209,13 @@ class _AddStudentFormPageState extends State<AddStudentFormPage>
     child: const Icon(Icons.person, color: Colors.grey),
   );
 
-  // ============================================================
-  // FIX 3: _editModeSectionWidget — selected class ki sections
-  // dikhao, sab classes ki nahi
-  // ============================================================
   Widget? _editModeSectionWidget(StudentFormDataModel? data) {
     if (widget.editStudent == null) return null;
 
-    // ✅ FIX: Sirf tab hide karo jab form config mein class_section
-    // field ho — lekin edit mode mein hamesha dikhao
-    // (Original code mein ye widget hide ho jaata tha)
-
     final selectedClassId = _toInt(_selectVal['class']);
 
-    // Class select nahi hai toh section field nahi dikhao
     if (selectedClassId == null) return null;
 
-    // ✅ FIX: Sirf selected class ki sections dikhao
     final selectedClass = data?.classes.firstWhere(
           (c) => c.id == selectedClassId,
       orElse: () =>

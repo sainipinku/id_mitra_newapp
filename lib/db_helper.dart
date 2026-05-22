@@ -15,7 +15,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 26,
+      version: 27,
       onCreate: (db, version) async {
         await db.execute('''
         CREATE TABLE students (
@@ -87,6 +87,15 @@ class DBHelper {
         await _createStaffCorrectionTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 27) {
+          // Add staff_json column to pending_checklists for offline staff process checklist
+          try {
+            await db.execute(
+              'ALTER TABLE pending_checklists ADD COLUMN staff_json TEXT',
+            );
+          } catch (_) {}
+        }
+
         if (oldVersion < 26) {
           // Fix: Recreate students table if it was never created due to duplicate column bug
           try {
@@ -434,6 +443,7 @@ class DBHelper {
           card_type TEXT,
           card_for TEXT,
           students_json TEXT,
+          staff_json TEXT,
           created_at INTEGER
         )
         ''');

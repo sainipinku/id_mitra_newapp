@@ -233,7 +233,7 @@ class _StaffOrderDetailPageState extends State<StaffOrderDetailPage> {
                   Text(o.typeLabel,
                       style: MyStyles.regularText(size: 13, color: AppTheme.graySubTitleColor)),
                   const SizedBox(height: 4),
-                  Text(o.orderedAt,
+                  Text(o.formattedOrderedAt,
                       style: MyStyles.regularText(size: 12, color: AppTheme.graySubTitleColor)),
                   const SizedBox(height: 10),
                   Container(
@@ -335,7 +335,7 @@ class _StaffOrderDetailPageState extends State<StaffOrderDetailPage> {
       _StaffRow('Order ID', '#${o.id}'),
       _StaffRow('Type', o.typeLabel),
       _StaffRow('Status', o.statusLabel),
-      _StaffRow('Order Date', o.orderedAt),
+      _StaffRow('Order Date', o.formattedOrderedAt),
       _StaffRow('Received At', o.receivedAtShort),
       if (o.studentCard == 1)
         _StaffRow('Student Card', 'Yes (Qty: ${o.studentCardQty})'),

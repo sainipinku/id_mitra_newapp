@@ -3344,11 +3344,11 @@ class _StaffOrderItemCard extends StatelessWidget {
                               Icon(Icons.calendar_today_outlined,
                                   size: 11,
                                   color: AppTheme.graySubTitleColor),
-                              const SizedBox(width: 3),
-                              Text(order.orderedAt,
-                                  style: MyStyles.regularText(
-                                      size: 11,
-                                      color: AppTheme.graySubTitleColor)),
+                              // const SizedBox(width: 3),
+                              // Text(order.formattedOrderedAt,
+                              //     style: MyStyles.regularText(
+                              //         size: 11,
+                              //         color: AppTheme.graySubTitleColor)),
                             ],
                           ),
                         ],

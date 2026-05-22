@@ -122,7 +122,7 @@ class StaffFormCubit extends Cubit<StaffFormState> {
         state.copyWith(
           loading: false,
           fields: _partnerDefaultFields(),
-          availableFields: _partnerDefaultFields(),
+          availableFields: _staffAllAvailableFields(),
           schoolName: schoolName,
         ),
       );
@@ -143,7 +143,7 @@ class StaffFormCubit extends Cubit<StaffFormState> {
         where: 'school_id = ?',
         whereArgs: ['staff_$schoolId'],
         limit: 1,
-      );
+      ); 
       if (rows.isEmpty) return null;
 
       final row = rows.first;
@@ -156,14 +156,7 @@ class StaffFormCubit extends Cubit<StaffFormState> {
       final fields = rawFields
           .map((e) => StudentFormField.fromJson(Map<String, dynamic>.from(e)))
           .toList();
-      final available = rawAvailable.isNotEmpty
-          ? rawAvailable
-                .map(
-                  (e) =>
-                      StudentFormField.fromJson(Map<String, dynamic>.from(e)),
-                )
-                .toList()
-          : fields;
+      final available = _staffAllAvailableFields();
       final roles = rawRoles
           .map((e) => StaffRole.fromJson(Map<String, dynamic>.from(e)))
           .toList();
@@ -241,7 +234,7 @@ class StaffFormCubit extends Cubit<StaffFormState> {
         print('[StaffForm] Fields API error: $e');
         if (isPartner && emitStates) {
           fields = _partnerDefaultFields();
-          availableFields = List.from(fields);
+          availableFields = _staffAllAvailableFields();
         }
       }
 
@@ -280,7 +273,7 @@ class StaffFormCubit extends Cubit<StaffFormState> {
           state.copyWith(
             loading: false,
             fields: fields,
-            availableFields: availableFields,
+            availableFields: _staffAllAvailableFields(),
             roles: roles,
             schoolName: schoolName,
           ),
@@ -539,6 +532,193 @@ class StaffFormCubit extends Cubit<StaffFormState> {
         type: 'password',
         required: false,
         order: 8,
+        group: 'login_details',
+        groupLabel: 'Login Details',
+      ),
+    ];
+  }
+
+  List<StudentFormField> _staffAllAvailableFields() {
+    return [
+      // ── Staff Details ──────────────────────────────────────
+      StudentFormField(
+        name: 'designation',
+        label: 'Designation',
+        type: 'text',
+        required: false,
+        order: 1,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      StudentFormField(
+        name: 'department',
+        label: 'Department',
+        type: 'text',
+        required: false,
+        order: 2,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      StudentFormField(
+        name: 'name',
+        label: 'Name',
+        type: 'text',
+        required: true,
+        order: 3,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      StudentFormField(
+        name: 'phone',
+        label: 'Phone',
+        type: 'phone',
+        required: true,
+        order: 4,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      StudentFormField(
+        name: 'email',
+        label: 'Email',
+        type: 'email',
+        required: false,
+        order: 5,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      StudentFormField(
+        name: 'role',
+        label: 'Role',
+        type: 'select',
+        required: true,
+        order: 6,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      StudentFormField(
+        name: 'employee_id',
+        label: 'Employee Id',
+        type: 'text',
+        required: false,
+        order: 7,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      StudentFormField(
+        name: 'gender',
+        label: 'Gender',
+        type: 'select',
+        required: false,
+        order: 8,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      StudentFormField(
+        name: 'date_of_birth',
+        label: 'Date of Birth',
+        type: 'date',
+        required: false,
+        order: 9,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      StudentFormField(
+        name: 'date_of_joining',
+        label: 'Date Of Joining',
+        type: 'date',
+        required: false,
+        order: 10,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      StudentFormField(
+        name: 'blood_group',
+        label: 'Blood Group',
+        type: 'select',
+        required: false,
+        order: 11,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      StudentFormField(
+        name: 'whatsapp_number',
+        label: 'Whatsapp Number',
+        type: 'phone',
+        required: false,
+        order: 12,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      StudentFormField(
+        name: 'father_name',
+        label: 'Father Name',
+        type: 'text',
+        required: false,
+        order: 13,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      StudentFormField(
+        name: 'mother_name',
+        label: 'Mother Name',
+        type: 'text',
+        required: false,
+        order: 14,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      StudentFormField(
+        name: 'husband_name',
+        label: 'Husband Name',
+        type: 'text',
+        required: false,
+        order: 15,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      StudentFormField(
+        name: 'national_code',
+        label: 'National Code',
+        type: 'text',
+        required: false,
+        order: 16,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      StudentFormField(
+        name: 'address',
+        label: 'Address',
+        type: 'textarea',
+        required: false,
+        order: 17,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      StudentFormField(
+        name: 'pincode',
+        label: 'Pincode',
+        type: 'digits',
+        required: false,
+        order: 18,
+        group: 'staff_details',
+        groupLabel: 'Staff Details',
+      ),
+      // ── Login Details ──────────────────────────────────────
+      StudentFormField(
+        name: 'password',
+        label: 'Password',
+        type: 'password',
+        required: false,
+        order: 19,
+        group: 'login_details',
+        groupLabel: 'Login Details',
+      ),
+      StudentFormField(
+        name: 'password_confirmation',
+        label: 'Confirm Password',
+        type: 'password',
+        required: false,
+        order: 20,
         group: 'login_details',
         groupLabel: 'Login Details',
       ),

@@ -10,6 +10,7 @@ import 'package:idmitra/api_mamanger/config.dart';
 import 'package:idmitra/api_mamanger/secure_storage.dart';
 import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/config/sharedpref.dart';
+import 'package:idmitra/db_helper.dart';
 import 'package:idmitra/models/LoginModel.dart';
 import 'package:idmitra/models/schools/SchoolListModel.dart';
 import 'package:idmitra/models/home/SchoolDashboardModel.dart';
@@ -21,6 +22,7 @@ import 'package:idmitra/screens/staff/staff_user_details/staff_user_details_page
 import 'package:idmitra/utils/MyStyles.dart';
 import 'package:idmitra/utils/navigation_utils.dart';
 import 'package:page_transition/page_transition.dart';
+import 'package:sqflite/sqflite.dart';
 
 import 'package:idmitra/providers/staff/staff_cubit.dart';
 import 'package:idmitra/providers/students/students_cubit.dart';
@@ -29,6 +31,8 @@ import 'package:idmitra/screens/staff/staff_student_list/staff_student_list.dart
 import 'package:idmitra/screens/parent/parent_dashboard.dart';
 import '../staff_student_list/staff_list.dart';
 import 'staff_home.dart';
+
+const _kStaffUserProfileKey = 'staff_user_profile';
 
 class StaffDashboard extends StatefulWidget {
   SchoolDetailsModel? schoolDetailsModel;
@@ -98,6 +102,43 @@ class _StaffDashboardState extends State<StaffDashboard> {
     super.dispose();
   }
 
+  // ── Local DB helpers (same pattern as AdminDashboardCubit) ──
+
+  Future<void> _saveUserProfileToLocal(Map<String, dynamic> data) async {
+    try {
+      final db = await DBHelper.db;
+      await db.insert(
+        'home_cache',
+        {
+          'key': _kStaffUserProfileKey,
+          'json_data': jsonEncode(data),
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      print('StaffDashboard: saved user profile to local DB');
+    } catch (e) {
+      print('StaffDashboard: local save error: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>?> _loadUserProfileFromLocal() async {
+    try {
+      final db = await DBHelper.db;
+      final rows = await db.query(
+        'home_cache',
+        where: 'key = ?',
+        whereArgs: [_kStaffUserProfileKey],
+        limit: 1,
+      );
+      if (rows.isEmpty) return null;
+      return jsonDecode(rows.first['json_data'] as String) as Map<String, dynamic>;
+    } catch (e) {
+      print('StaffDashboard: local load error: $e');
+      return null;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -105,10 +146,34 @@ class _StaffDashboardState extends State<StaffDashboard> {
   }
 
   Future<void> _loadUser() async {
+    // ── STEP 1: Load from local DB cache first (instant UI) ──
+    final cached = await _loadUserProfileFromLocal();
+    if (cached != null) {
+      final cachedName = cached['name'] as String? ?? '';
+      final cachedImage = cached['profileImage'] as String? ?? '';
+      final cachedSchoolId = cached['schoolId'] as String? ?? '';
+      final cachedClassIds = (cached['assignedClassIds'] as List<dynamic>? ?? [])
+          .map((e) => e as int)
+          .toList();
+
+      if (mounted && cachedName.isNotEmpty) {
+        setState(() {
+          _userName = cachedName;
+          _profileImage = cachedImage;
+          _schoolId = cachedSchoolId;
+          _assignedClassIds = cachedClassIds;
+          _userLoaded = true;
+          _cachedWidgets = null;
+        });
+        if (cachedSchoolId.isNotEmpty) {
+          _staffCubit.fetchStaff(schoolId: cachedSchoolId);
+        }
+      }
+    }
+
+    // ── STEP 2: Load from UserLocal (SharedPreferences) ──
     final user = await UserLocal.getUser();
     final school = await UserLocal.getSchool();
-
-    // First set from local cache so UI shows quickly
     final cachedClasses = await UserLocal.getAssignedClasses();
     final newSchoolId = school['schoolId'] ?? '';
 
@@ -119,19 +184,18 @@ class _StaffDashboardState extends State<StaffDashboard> {
         _schoolId = newSchoolId;
         _assignedClassIds = cachedClasses.map((c) => c.id).toList();
         _userLoaded = true;
-        _cachedWidgets = null; // force rebuild with updated assignedClassIds
+        _cachedWidgets = null;
       });
       if (newSchoolId.isNotEmpty) {
         _staffCubit.fetchStaff(schoolId: newSchoolId);
       }
     }
 
-    // Then fetch fresh assigned classes from API and update if different
+    // ── STEP 3: Fetch fresh assigned classes from API ──
     try {
       final api = ApiManager();
       final userUuid = user['userUuid'] as String? ?? '';
 
-      // Use staffAssignedClasses endpoint if we have UUID and schoolId
       if (userUuid.isNotEmpty && newSchoolId.isNotEmpty) {
         final assignedUrl = Config.baseUrl +
             Routes.staffAssignedClasses(newSchoolId, userUuid);
@@ -139,7 +203,6 @@ class _StaffDashboardState extends State<StaffDashboard> {
         final assignedResponse = await api.getRequest(assignedUrl);
         if (assignedResponse != null && assignedResponse.statusCode == 200) {
           final jsonData = jsonDecode(assignedResponse.body);
-          // Response: {"data": {"assigned_classes": {uuid: {...}, ...}}}
           final rawData = jsonData['data']?['assigned_classes'];
           print('Fresh assigned_classes from staffAssignedClasses API: $rawData');
           List<AssignedClass> freshClasses = [];
@@ -156,13 +219,22 @@ class _StaffDashboardState extends State<StaffDashboard> {
           final freshIds = freshClasses.map((c) => c.id).toList();
           print('Fresh assignedClassIds: $freshIds');
           await UserLocal.saveAssignedClasses(freshClasses);
+
+          // ── Save to local DB cache ──
+          await _saveUserProfileToLocal({
+            'name': user['name'] ?? '',
+            'profileImage': user['profileImage'] ?? '',
+            'schoolId': newSchoolId,
+            'assignedClassIds': freshIds,
+          });
+
           if (mounted && freshIds.toString() != _assignedClassIds.toString()) {
             setState(() {
               _assignedClassIds = freshIds;
-              _cachedWidgets = null; // force rebuild with fresh assignedClassIds
+              _cachedWidgets = null;
             });
           }
-          return; // done
+          return;
         }
       }
 
@@ -181,10 +253,19 @@ class _StaffDashboardState extends State<StaffDashboard> {
           final freshIds = freshClasses.map((c) => c.id).toList();
           print('Fresh assignedClassIds: $freshIds');
           await UserLocal.saveAssignedClasses(freshClasses);
+
+          // ── Save to local DB cache ──
+          await _saveUserProfileToLocal({
+            'name': user['name'] ?? '',
+            'profileImage': user['profileImage'] ?? '',
+            'schoolId': newSchoolId,
+            'assignedClassIds': freshIds,
+          });
+
           if (mounted && freshIds.toString() != _assignedClassIds.toString()) {
             setState(() {
               _assignedClassIds = freshIds;
-              _cachedWidgets = null; // force rebuild with fresh assignedClassIds
+              _cachedWidgets = null;
             });
           }
         }

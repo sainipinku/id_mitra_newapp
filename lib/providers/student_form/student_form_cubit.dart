@@ -320,7 +320,7 @@ class StudentFormCubit extends Cubit<StudentFormState> {
     _schoolId = schoolId;
     emit(state.copyWith(loading: true, error: null, successMessage: null));
 
-    // Step 1: Try local DB first (instant load)
+    // Step 1: Try local DB first
     final localFields = await _loadFieldsFromLocal(schoolId);
     if (localFields != null && localFields.$1.isNotEmpty) {
       emit(state.copyWith(
@@ -334,19 +334,16 @@ class StudentFormCubit extends Cubit<StudentFormState> {
       return;
     }
 
-    // Step 2: If no local data and no internet, provide core fields as fallback
     final hasInternet = await _checkInternet();
     if (!hasInternet) {
       emit(state.copyWith(
         loading: false,
-        fields: _ensureCoreFields([]), // This will provide core fields (Name, Class, etc.)
+        fields: _ensureCoreFields([]),
         availableFields: _masterAvailableFields,
         schoolName: schoolName,
       ));
       return;
     }
-
-    // Step 3: Fetch from API
     await _syncFieldsFromApi(schoolId, schoolName, emitStates: true);
   }
 
@@ -359,7 +356,7 @@ class StudentFormCubit extends Cubit<StudentFormState> {
     }
   }
 
-  /// Load form fields from local DB
+  //Load form fields from local DB
   Future<(List<StudentFormField>, List<StudentFormField>)?> _loadFieldsFromLocal(String schoolId) async {
     try {
       final db = await DBHelper.db;
@@ -390,7 +387,7 @@ class StudentFormCubit extends Cubit<StudentFormState> {
     }
   }
 
-  /// Fetch form fields from API and save to local DB
+  // Fetch form fields from API and save to local DB
   Future<void> _syncFieldsFromApi(String schoolId, String schoolName, {bool emitStates = false}) async {
     try {
       final token = await UserSecureStorage.fetchToken();
@@ -439,7 +436,7 @@ class StudentFormCubit extends Cubit<StudentFormState> {
     }
   }
 
-  /// Save form fields to local DB
+  // Save form fields to local DB
   Future<void> _saveFieldsToLocal(
       String schoolId,
       List<StudentFormField> fields,
@@ -529,7 +526,6 @@ class StudentFormCubit extends Cubit<StudentFormState> {
       final json = jsonDecode(response.body);
       _sig = json['sig'] ?? json['data']?['sig'] ?? '';
     }
-    print('Sig result: $_sig (status: ${response.statusCode})');
   }
 
   Future<void> updateStudentFormFields(

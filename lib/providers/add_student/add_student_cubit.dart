@@ -45,8 +45,8 @@ class AddStudentCubit extends Cubit<AddStudentState> {
       await file.copy(savedPath);
       return savedPath;
     } catch (e) {
-      debugPrint("Error saving file locally: $e");
-      return file.path; // fallback to original path
+      print("Error saving file locally: $e");
+      return file.path;
     }
   }
 
@@ -109,14 +109,18 @@ class AddStudentCubit extends Cubit<AddStudentState> {
             }
             newStudent = StudentDetailsData.fromJson(data);
 
+            if (formDataModel != null) {
+              newStudent = _enrichWithFormData(newStudent, formDataModel);
+            }
+
             //  Save to Local DB
             if (newStudent != null) {
               await _localDS.insertStudents([newStudent]);
-              debugPrint("Student saved to local DB after successful add");
+              print("Student saved to local DB after successful add");
             }
           }
         } catch (e) {
-          debugPrint("Error saving to local DB or parsing student: $e");
+          print("Error saving to local DB or parsing student: $e");
         }
         emit(AddStudentState(
           success: true,
@@ -251,10 +255,19 @@ class AddStudentCubit extends Cubit<AddStudentState> {
       'address': 'address',
     };
 
+    bool isBlankValue(dynamic v) {
+      if (v == null) return true;
+      final s = v.toString().trim();
+      if (s.isEmpty) return true;
+      final low = s.toLowerCase();
+      return low.startsWith('-select') ||
+          low == 'select mode' ||
+          low == 'select blood group';
+    }
+
     for (var apiFieldName in allConfiguredFieldNames) {
       final logicalName = fieldMapping[apiFieldName] ?? apiFieldName;
-      final value = fields[logicalName];
-      if (value == null || value.toString().trim().isEmpty) {
+      if (isBlankValue(fields[logicalName])) {
         missingFields.add(apiFieldName);
       }
     }
@@ -386,6 +399,11 @@ class AddStudentCubit extends Cubit<AddStudentState> {
 
             updatedStudent = StudentDetailsData.fromJson(data);
 
+            // Enrich with class/section/session names from form data
+            if (formDataModel != null) {
+              updatedStudent = _enrichWithFormData(updatedStudent, formDataModel);
+            }
+
             //  Update in Local DB
             if (updatedStudent != null) {
               await _localDS.insertStudents([updatedStudent]);
@@ -425,9 +443,6 @@ class AddStudentCubit extends Cubit<AddStudentState> {
       }
     } catch (e) {
       if (e is SocketException || e is http.ClientException) {
-        //  OFFLINE UPDATE MODE — existingStudent se data preserve karo
-        debugPrint("Network error detected during update, saving locally: $e");
-
         final offlineStudent = _buildOfflineStudent(
           schoolId,
           fields,
@@ -436,7 +451,6 @@ class AddStudentCubit extends Cubit<AddStudentState> {
           existingStudent: existingStudent, //  Pass existing student
         );
 
-        // Handle offline photo if present
         final photoFile = files['student_photo'];
         final savedPhotoPath = await _saveFileLocally(photoFile, 'student_photo', studentUuid);
 
@@ -461,7 +475,6 @@ class AddStudentCubit extends Cubit<AddStudentState> {
     }
   }
 
-  // ─────────────────────────── OFFLINE STUDENT BUILDER ───────────────────────────
 
   // StudentDetailsData _buildOfflineStudent(
   //     String schoolId,
@@ -616,7 +629,52 @@ class AddStudentCubit extends Cubit<AddStudentState> {
   //   );
   // }
 
-  // ─────────────────────────── BODY BUILDER ───────────────────────────
+  // ─────────────────────────── ENRICHMENT ───────────────────────────
+
+  StudentDetailsData _enrichWithFormData(
+    StudentDetailsData student,
+    StudentFormDataModel formDataModel,
+  ) {
+    final classId = student.schoolClassId;
+    final sectionId = student.schoolClassSectionId;
+    final sessionId = student.schoolSessionId;
+
+    Class? datumClass = student.datumClass;
+    Section? section = student.section;
+    Session? session = student.session;
+
+    if (classId != null) {
+      final c = formDataModel.classes.firstWhere(
+        (e) => e.id == classId,
+        orElse: () => ClassOption(id: -1, name: '', nameWithPrefix: ''),
+      );
+      if (c.id != -1) {
+        datumClass ??= Class(id: c.id, name: c.name, nameWithprefix: c.nameWithPrefix);
+        if (sectionId != null && section == null) {
+          final s = c.sections.firstWhere(
+            (e) => e.id == sectionId,
+            orElse: () => SectionOption(id: -1, name: ''),
+          );
+          if (s.id != -1) section = Section(id: s.id, name: s.name);
+        }
+      }
+    }
+
+    if (sessionId != null && session == null) {
+      final s = formDataModel.sessions.firstWhere(
+        (e) => e.value == sessionId,
+        orElse: () => SessionOption(value: -1, label: ''),
+      );
+      if (s.value != -1) session = Session(id: s.value, name: s.label);
+    }
+
+    return student.copyWith(
+      datumClass: datumClass,
+      section: section,
+      session: session,
+    );
+  }
+
 
   Map<String, dynamic> _buildBody(String schoolId, Map<String, dynamic> fields) {
     final gender = fields['gender']?.toString().toLowerCase();

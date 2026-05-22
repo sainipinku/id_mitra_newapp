@@ -1,5 +1,5 @@
-import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -13,16 +13,19 @@ import 'package:idmitra/models/student_form/StudentFormFieldsModel.dart';
 import 'package:idmitra/models/students/StudentsListModel.dart'
     hide ClassOption;
 import 'package:idmitra/providers/student_form/student_form_cubit.dart';
+import 'package:idmitra/utils/common_widgets/LogoUploadView.dart';
 import 'package:idmitra/utils/common_widgets/app_button.dart';
 import 'package:idmitra/utils/common_widgets/drop_down/drop_down.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
+
 import '../../../models/add_student/StudentFormDataModel.dart';
 import '../../../providers/add_student/add_student_cubit.dart';
 import '../../../providers/student_form/student_form_data_cubit.dart';
-import '../../../api_mamanger/api_manager.dart';
-import '../../../api_mamanger/config.dart';
+import '../../../providers/students/students_cubit.dart';
+import '../../../providers/students/students_state.dart';
 import '../../add_student/student_assign_class_sheet.dart';
+
 
 const List<String> _kGenderOptions = [
   '-Select Gender-',
@@ -60,8 +63,7 @@ class AdminAddStudentFormPage extends StatefulWidget {
   });
 
   @override
-  State<AdminAddStudentFormPage> createState() =>
-      _AdminAddStudentFormPageState();
+  State<AdminAddStudentFormPage> createState() => _AdminAddStudentFormPageState();
 }
 
 class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
@@ -73,48 +75,19 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
   final Map<String, dynamic> _selectVal = {};
   final Map<String, File?> _files = {};
 
-  bool _extraLoading = false;
-  List<StudentDetailsData> _extraStudents = [];
-
   @override
   void initState() {
     super.initState();
     _tabController = TabController(
-      length: widget.editStudent != null ? 1 : 2,
-      vsync: this,
-      initialIndex: widget.initialTab,
-    );
-    _tabController.addListener(() {
-      if (_tabController.index == 1 && !_tabController.indexIsChanging) {
-        _fetchExtraStudents();
-      }
-    });
+        length: widget.editStudent != null ? 1 : 2,
+        vsync: this,
+        initialIndex: widget.initialTab);
     if (widget.editStudent != null) {
       _additionalExpanded = _hasAdditionalData(widget.editStudent!);
       WidgetsBinding.instance.addPostFrameCallback(
             (_) => _prefillStudent(widget.editStudent!),
       );
     }
-  }
-
-  Future<void> _fetchExtraStudents() async {
-    if (_extraLoading) return;
-    setState(() => _extraLoading = true);
-    try {
-      final response = await ApiManager().getRequest(
-        "${Config.baseUrl}auth/school/${widget.schoolId}?is_moved=1",
-      );
-      if (response != null && response.statusCode == 200) {
-        final jsonData = jsonDecode(response.body);
-        final List list = jsonData["data"]?["data"] ?? [];
-        setState(() {
-          _extraStudents = list.map((e) => StudentDetailsData.fromJson(e)).toList();
-        });
-      }
-    } catch (e) {
-      debugPrint("Fetch extra students error: $e");
-    }
-    setState(() => _extraLoading = false);
   }
 
   bool _hasAdditionalData(StudentDetailsData s) {
@@ -141,7 +114,6 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
       s.rfidNo?.toString(),
       s.transportMode?.toString(),
       s.schoolHouseId?.toString(),
-      s.panNo?.toString(),
     ].any((v) => v != null && v.isNotEmpty);
   }
 
@@ -152,30 +124,29 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
     super.dispose();
   }
 
-  // void _clearForm() {
-  //   for (final c in _ctrl.values) c.clear();
-  //   setState(() {
-  //     _selectVal.clear();
-  //     _files.clear();
-  //   });
-  // }
+  void _clearForm() {
+    for (final c in _ctrl.values) c.clear();
+    setState(() {
+      _selectVal.clear();
+      _files.clear();
+    });
+  }
 
   String? _validateForm(
-      List<StudentFormField> allFields,
-      StudentFormDataModel? data,
-      ) {
+      List<StudentFormField> allFields, StudentFormDataModel? data) {
     for (final f in allFields) {
       if (!f.required) continue;
       if (f.name == 'class_section' && widget.editStudent != null) continue;
+
       if (f.type == 'select') {
         if (_selectFieldHasNoOptions(f.name, data)) continue;
+
         final val = _selectVal[f.name];
-        final isEmpty =
-            val == null ||
-                val.toString().isEmpty ||
-                val.toString().startsWith('-Select') ||
-                val.toString() == 'Select Mode' ||
-                val.toString() == 'Select Blood Group';
+        final isEmpty = val == null ||
+            val.toString().isEmpty ||
+            val.toString().startsWith('-Select') ||
+            val.toString() == 'Select Mode' ||
+            val.toString() == 'Select Blood Group';
         if (isEmpty) return '${f.label} is required';
       } else if (f.type == 'file') {
       } else {
@@ -184,13 +155,20 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
       }
     }
 
-    final password = _ctrl['password']?.text ?? '';
-    final confirmPassword = _ctrl['password_confirmation']?.text ?? '';
-    if (password.isNotEmpty && confirmPassword.isEmpty) {
-      return 'Please fill Confirm Password';
-    }
-    if (password.isNotEmpty && confirmPassword != password) {
-      return 'Password and Confirm Password do not match';
+    final hasPasswordField = allFields.any((f) => f.name == 'password');
+    final hasConfirmField =
+    allFields.any((f) => f.name == 'password_confirmation');
+
+    if (hasPasswordField || hasConfirmField) {
+      final password = _ctrl['password']?.text ?? '';
+      final confirmPassword = _ctrl['password_confirmation']?.text ?? '';
+
+      if (password.isNotEmpty && confirmPassword != password) {
+        return 'Password and Confirm Password do not match';
+      }
+      if (password.isNotEmpty && confirmPassword.isEmpty && hasConfirmField) {
+        return 'Please fill Confirm Password';
+      }
     }
 
     return null;
@@ -207,30 +185,21 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
       case 'class_section':
         final selectedClassId = _toInt(_selectVal['class']);
         if (selectedClassId == null) return true;
-        final selectedClass = data?.classes.firstWhere(
-              (c) => c.id == selectedClassId,
-          orElse: () => ClassOption(id: -1, name: '', nameWithPrefix: ''),
-        );
         return false;
       default:
         return false;
     }
   }
-
   void _prefillStudent(StudentDetailsData s) {
     setState(() {
       _setCtrl('student_name', s.name);
       _setCtrl('student_email', s.email?.toString());
-
       _setCtrl('student_phone', s.phone?.toString());
-
       _setCtrl('student_whatsapp', s.whatsappPhone?.toString());
       _setCtrl('student_whatsapp_number', s.whatsappPhone?.toString());
       _setCtrl('landline_number', s.landLineNo?.toString());
       _setCtrl('landline_contact_number', s.landLineNo?.toString());
-
       _setCtrl('aadhar_card_number', s.aadharNo?.toString());
-
       _setCtrl('uid_number', s.uidNo?.toString());
       _setCtrl('nic_id', s.studentNicId?.toString());
       _setCtrl('student_nic_id', s.studentNicId?.toString());
@@ -238,16 +207,11 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
       _setCtrl('religion', s.religion?.toString());
       _setCtrl('address', s.address);
       _setCtrl('pincode', s.pincode?.toString());
-
       _setCtrl('registration_number', s.regNo?.toString());
       _setCtrl('roll_number', s.rollNo?.toString());
       _setCtrl('admission_number', s.admissionNo?.toString());
       _setCtrl('sr_number', s.srNo);
       _setCtrl('rfid_number', s.rfidNo?.toString());
-
-      _setCtrl('pen_number', s.panNo?.toString());
-      _setCtrl('pan_number', s.panNo?.toString());
-
       _setCtrl('father_name', s.fatherName);
       _setCtrl('father_email', s.fatherEmail?.toString());
       _setCtrl('father_phone', s.fatherPhone);
@@ -283,17 +247,19 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
       if (s.isRteStudent != null) {
         _selectVal['is_rte_student'] = s.isRteStudent.toString();
       }
+
       if (s.schoolSessionId != null) {
-        _selectVal['session'] = s.schoolSessionId;
+        _selectVal['session'] = _toInt(s.schoolSessionId) ?? s.schoolSessionId;
       }
       if (s.schoolClassId != null) {
-        _selectVal['class'] = s.schoolClassId;
+        _selectVal['class'] = _toInt(s.schoolClassId) ?? s.schoolClassId;
       }
       if (s.schoolClassSectionId != null) {
-        _selectVal['class_section'] = s.schoolClassSectionId;
+        _selectVal['class_section'] =
+            _toInt(s.schoolClassSectionId) ?? s.schoolClassSectionId;
       }
       if (s.schoolHouseId != null) {
-        _selectVal['house'] = s.schoolHouseId;
+        _selectVal['house'] = _toInt(s.schoolHouseId) ?? s.schoolHouseId;
       }
     });
   }
@@ -382,25 +348,27 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
       String label,
       VoidCallback onTap, {
         bool isRemove = false,
-      }) => InkWell(
-    onTap: onTap,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          SvgPicture.asset(svg, allowDrawingOutsideViewBox: true),
-          const SizedBox(width: 10),
-          Text(
-            label,
-            style: MyStyles.regularText(
-              size: 14,
-              color: isRemove ? AppTheme.redBtnBgColor : AppTheme.black_Color,
-            ),
+      }) =>
+      InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            children: [
+              SvgPicture.asset(svg, allowDrawingOutsideViewBox: true),
+              const SizedBox(width: 10),
+              Text(
+                label,
+                style: MyStyles.regularText(
+                  size: 14,
+                  color:
+                  isRemove ? AppTheme.redBtnBgColor : AppTheme.black_Color,
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    ),
-  );
+        ),
+      );
 
   Widget _divider() => Container(
     height: 1,
@@ -423,9 +391,7 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
         IOSUiSettings(title: 'Crop', aspectRatioLockEnabled: true),
       ],
     );
-    if (cropped != null) {
-      setState(() => _files[fieldName] = File(cropped.path));
-    }
+    if (cropped != null) setState(() => _files[fieldName] = File(cropped.path));
   }
 
   TextEditingController _ctrlFor(String name) {
@@ -443,7 +409,8 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
             ? [
           TextSpan(
             text: ' *',
-            style: MyStyles.mediumText(size: 13, color: Colors.red),
+            style:
+            MyStyles.mediumText(size: 13, color: Colors.red),
           ),
         ]
             : [],
@@ -469,12 +436,12 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
     final val = _toInt(_selectVal['session']);
     if (val == null && sessions.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
+        if (mounted)
           setState(() => _selectVal['session'] = sessions.first.value);
-        }
       });
     }
-    final selected = (val != null && sessions.any((s) => s.value == val))
+    final selected =
+    (val != null && sessions.any((s) => s.value == val))
         ? sessions.firstWhere((s) => s.value == val)
         : sessions.isNotEmpty
         ? sessions.first
@@ -493,9 +460,7 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
             child: Text(
               selected?.label ?? 'No session available',
               style: MyStyles.regularText(
-                size: 14,
-                color: AppTheme.graySubTitleColor,
-              ),
+                  size: 14, color: AppTheme.graySubTitleColor),
             ),
           ),
           Icon(Icons.lock_outline, size: 16, color: AppTheme.graySubTitleColor),
@@ -551,7 +516,8 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
     final seen = <String>{};
     final unique = houses.where((h) => seen.add(h.name)).toList();
     final val = _toInt(_selectVal['house']);
-    final selected = (val != null && unique.any((h) => h.id == val))
+    final selected =
+    (val != null && unique.any((h) => h.id == val))
         ? unique.firstWhere((h) => h.id == val)
         : null;
     return Dropdown<HouseOption>(
@@ -594,7 +560,6 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
     );
   }
 
-
   Widget _transportDropdown() {
     const items = [
       {'label': 'Self Pickup', 'value': 'self_pickup'},
@@ -616,7 +581,8 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
   }
 
   Widget _loadingTile(String text) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+    padding:
+    const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
     decoration: BoxDecoration(
       border: Border.all(color: AppTheme.backBtnBgColor),
       borderRadius: BorderRadius.circular(8),
@@ -624,7 +590,8 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
     ),
     child: Text(
       text,
-      style: MyStyles.regularText(size: 14, color: AppTheme.graySubTitleColor),
+      style: MyStyles.regularText(
+          size: 14, color: AppTheme.graySubTitleColor),
     ),
   );
 
@@ -669,7 +636,8 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
                 top: 4,
                 right: 4,
                 child: GestureDetector(
-                  onTap: () => setState(() => _files[name] = null),
+                  onTap: () =>
+                      setState(() => _files[name] = null),
                   child: Container(
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
@@ -696,7 +664,8 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
                   width: double.infinity,
                   height: 80,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _photoPlaceholder(),
+                  errorBuilder: (_, __, ___) =>
+                      _photoPlaceholder(),
                 ),
               ),
               Positioned(
@@ -845,10 +814,11 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
                   return ValueListenableBuilder<TextEditingValue>(
                     valueListenable: _ctrlFor('password_confirmation'),
                     builder: (_, confirmVal, __) {
-                      final mismatch =
-                          confirmVal.text.isNotEmpty &&
-                              passwordVal.text.isNotEmpty &&
-                              confirmVal.text != passwordVal.text;
+                      final passwordText = passwordVal.text;
+                      final confirmText = confirmVal.text;
+                      final mismatch = confirmText.isNotEmpty &&
+                          passwordText.isNotEmpty &&
+                          confirmText != passwordText;
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -913,7 +883,6 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
     }
   }
 
-
   Widget _dynamicSelectField(
       String name,
       StudentFormDataModel? data,
@@ -959,6 +928,8 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
 
 
       case 'class_section':
+      case 'school_class_section_id':
+      case 'section':
 
         final selectedClassId =
         _toInt(_selectVal['class']);
@@ -967,12 +938,14 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
           "SELECTED CLASS ID => $selectedClassId",
         );
 
+        // class not selected
         if (selectedClassId == null) {
           return _loadingTile(
             'Select a class first',
           );
         }
 
+        // get selected class
         final selectedClass = data?.classes.firstWhere(
               (c) => c.id == selectedClassId,
           orElse: () => ClassOption(
@@ -982,6 +955,7 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
           ),
         );
 
+        // sections
         List<SectionOption> sections =
             selectedClass?.sections ?? [];
 
@@ -989,12 +963,14 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
           "SECTIONS => ${sections.map((e) => e.id).toList()}",
         );
 
+        // no sections
         if (sections.isEmpty) {
           return _loadingTile(
             'No sections available',
           );
         }
 
+        // selected section
         final int? selectedSectionId =
         _toInt(_selectVal['class_section']);
 
@@ -1076,10 +1052,12 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
         i += next != null ? 2 : 1;
       }
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows);
+    return Column(
+        crossAxisAlignment: CrossAxisAlignment.start, children: rows);
   }
 
-  Widget _sectionCard({required String title, required Widget child}) =>
+  Widget _sectionCard(
+      {required String title, required Widget child}) =>
       Container(
         width: double.infinity,
         margin: const EdgeInsets.only(bottom: 16),
@@ -1095,106 +1073,134 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
               child: Text(
                 title,
-                style: MyStyles.boldText(size: 15, color: AppTheme.black_Color),
+                style: MyStyles.boldText(
+                    size: 15, color: AppTheme.black_Color),
               ),
             ),
             const Divider(height: 1),
-            Padding(padding: const EdgeInsets.all(16), child: child),
+            Padding(
+                padding: const EdgeInsets.all(16), child: child),
           ],
         ),
       );
 
   Widget _otherStudentTab() {
-    if (_extraLoading) {
-      return const ShimmerList(expanded: false);
-    }
-    if (_extraStudents.isEmpty) {
-      return Center(
-        child: Image.asset('assets/images/no_data.png', height: 200),
-      );
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _extraStudents.length,
-      itemBuilder: (context, index) {
-        final student = _extraStudents[index];
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: (student.profilePhotoUrl != null &&
-                    student.profilePhotoUrl!.isNotEmpty)
-                    ? Image.network(
-                  student.profilePhotoUrl!,
-                  height: 55,
-                  width: 55,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _extraPlaceholder(),
-                )
-                    : _extraPlaceholder(),
+    return BlocProvider(
+      create: (_) => StudentsCubit()
+        ..fetchExtraStudents(schoolId: widget.schoolId),
+      child: _extraStudentList(),
+    );
+  }
+
+  Widget _extraStudentList() {
+    return BlocBuilder<StudentsCubit, StudentsState>(
+      builder: (context, state) {
+        if (state.extraLoading) {
+          return const ShimmerList(expanded: false);
+        }
+        if (state.extraStudentsList.isEmpty) {
+          return Center(
+            child: Image.asset('assets/images/no_data.png', height: 200),
+          );
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: state.extraStudentsList.length,
+          itemBuilder: (context, index) {
+            final student = state.extraStudentsList[index];
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      student.name ?? '',
-                      style: MyStyles.boldText(size: 15, color: AppTheme.black_Color),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      "${student.datumClass?.nameWithprefix ?? ''} - ${student.section?.name ?? ''}",
-                      style: MyStyles.regularText(size: 12, color: AppTheme.btnColor),
-                    ),
-                    if (student.fatherName != null && student.fatherName!.isNotEmpty)
-                      Text(
-                        "Father: ${student.fatherName}",
-                        style: MyStyles.regularText(size: 12, color: AppTheme.graySubTitleColor),
-                      ),
-                  ],
-                ),
-              ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert, color: Colors.grey),
-                onSelected: (value) {
-                  if (value == 'assign') {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                      builder: (_) => StudentAssignClassSheet(
-                        schoolId: widget.schoolId,
-                        studentUuid: student.uuid ?? '',
-                        studentName: student.name ?? '',
-                        onAssigned: _fetchExtraStudents,
-                      ),
-                    );
-                  }
-                },
-                itemBuilder: (_) => [
-                  const PopupMenuItem(
-                    value: 'assign',
-                    child: Row(
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: (student.profilePhotoUrl != null &&
+                        student.profilePhotoUrl!.isNotEmpty)
+                        ? Image.network(
+                      student.profilePhotoUrl!,
+                      height: 55,
+                      width: 55,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          _extraPlaceholder(),
+                    )
+                        : _extraPlaceholder(),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.class_, size: 18, color: Colors.blue),
-                        SizedBox(width: 8),
-                        Text('Assign Class'),
+                        Text(
+                          student.name ?? '',
+                          style: MyStyles.boldText(
+                              size: 15, color: AppTheme.black_Color),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          "${student.datumClass?.nameWithprefix ?? ''} - ${student.section?.name ?? ''}",
+                          style: MyStyles.regularText(
+                              size: 12, color: AppTheme.btnColor),
+                        ),
+                        if (student.fatherName != null &&
+                            student.fatherName!.isNotEmpty)
+                          Text(
+                            "Father: ${student.fatherName}",
+                            style: MyStyles.regularText(
+                                size: 12,
+                                color: AppTheme.graySubTitleColor),
+                          ),
                       ],
                     ),
                   ),
+                  PopupMenuButton<String>(
+                    icon:
+                    const Icon(Icons.more_vert, color: Colors.grey),
+                    onSelected: (value) {
+                      if (value == 'assign') {
+                        showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (_) => StudentAssignClassSheet(
+                            schoolId: widget.schoolId,
+                            studentUuid: student.uuid ?? '',
+                            studentName: student.name ?? '',
+                            onAssigned: () {
+                              context
+                                  .read<StudentsCubit>()
+                                  .fetchExtraStudents(
+                                schoolId: widget.schoolId,
+                              );
+                            },
+                          ),
+                        );
+                      }
+                    },
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(
+                        value: 'assign',
+                        child: Row(
+                          children: [
+                            Icon(Icons.class_,
+                                size: 18, color: Colors.blue),
+                            SizedBox(width: 8),
+                            Text('Assign Class'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -1207,47 +1213,44 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
     child: const Icon(Icons.person, color: Colors.grey),
   );
 
+  Widget? _editModeSectionWidget(StudentFormDataModel? data) {
+    if (widget.editStudent == null) return null;
+
+    final selectedClassId = _toInt(_selectVal['class']);
+
+    if (selectedClassId == null) return null;
+
+    final selectedClass = data?.classes.firstWhere(
+          (c) => c.id == selectedClassId,
+      orElse: () =>
+          ClassOption(id: -1, name: '', nameWithPrefix: ''),
+    );
+
+    var sections = selectedClass?.sections ?? [];
+    if (sections.isEmpty &&
+        (selectedClass?.sectionsIds.isNotEmpty ?? false)) {
+      sections = selectedClass!.sectionsIds
+          .map((id) => SectionOption(id: id, name: 'Section $id'))
+          .toList();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _label('Section'),
+          _sectionDropdown(sections),
+        ],
+      ),
+    );
+  }
+
   Widget _mainInfoTab(
       List<StudentFormField> currentFields,
       List<StudentFormField> additionalFields,
       StudentFormDataModel? data,
       ) {
-    Widget? _editModeSectionWidget() {
-      if (widget.editStudent == null) return null;
-      if (currentFields.any((f) => f.name == 'class_section')) return null;
-
-      final selectedClassId = _toInt(_selectVal['class']);
-
-      List<SectionOption> sections = [];
-      if (selectedClassId != null) {
-        final selectedClass = data?.classes.firstWhere(
-              (c) => c.id == selectedClassId,
-          orElse: () => ClassOption(id: -1, name: '', nameWithPrefix: ''),
-        );
-        if (selectedClass != null && selectedClass.id != -1) {
-          sections = selectedClass.sections;
-          if (sections.isEmpty && selectedClass.sectionsIds.isNotEmpty) {
-            sections = selectedClass.sectionsIds
-                .map((id) => SectionOption(id: id, name: 'Section $id'))
-                .toList();
-          }
-        }
-      }
-
-      return Padding(
-        padding: const EdgeInsets.only(top: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _label('Section'),
-            selectedClassId == null
-                ? _loadingTile('Select a class first')
-                : _sectionDropdown(sections),
-          ],
-        ),
-      );
-    }
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Form(
@@ -1275,16 +1278,20 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
                 children: [
                   _twoColGrid(currentFields, data),
                   Builder(builder: (_) {
-                    final w = _editModeSectionWidget();
+                    // Skip if section field is already in currentFields
+                    if (currentFields.any((f) =>
+                    f.name == 'class_section' ||
+                        f.name == 'school_class_section_id' ||
+                        f.name == 'section')) {
+                      return const SizedBox.shrink();
+                    }
+                    final w = _editModeSectionWidget(data);
                     if (w == null) return const SizedBox.shrink();
                     return w;
                   }),
                 ],
               ),
             ),
-            // Additional Information section hidden for now
-            // if (additionalFields.isNotEmpty)
-            //   _additionalCollapsible(additionalFields, data),
           ],
         ),
       ),
@@ -1336,8 +1343,8 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
         children: [
           InkWell(
             borderRadius: BorderRadius.circular(12),
-            onTap: () =>
-                setState(() => _additionalExpanded = !_additionalExpanded),
+            onTap: () => setState(
+                    () => _additionalExpanded = !_additionalExpanded),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
               child: Row(
@@ -1391,7 +1398,8 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
             final data = dataState.data;
             final currentFields = formState.fields;
             final additionalFields = formState.availableFields
-                .where((f) => !currentFields.any((c) => c.name == f.name))
+                .where(
+                    (f) => !currentFields.any((c) => c.name == f.name))
                 .toList();
 
             return Scaffold(
@@ -1405,16 +1413,30 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
               body: Column(
                 children: [
                   if (widget.editStudent == null)
-                    Material(
-                      color: Colors.white,
+                    Container(
+                      margin:
+                      const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      decoration: BoxDecoration(
+                        color: AppTheme.appBackgroundColor,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                       child: TabBar(
                         controller: _tabController,
-                        labelColor: AppTheme.btnColor,
-                        unselectedLabelColor: AppTheme.graySubTitleColor,
-                        indicatorColor: AppTheme.btnColor,
-                        indicatorWeight: 2.5,
-                        labelStyle: MyStyles.mediumText(size: 13, color: Colors.white),
-                        unselectedLabelStyle: MyStyles.regularText(size: 13, color: Colors.white),
+                        indicator: BoxDecoration(
+                          color: AppTheme.btnColor,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        labelColor: Colors.white,
+                        unselectedLabelColor:
+                        AppTheme.graySubTitleColor,
+                        labelStyle: MyStyles.boldText(
+                          size: 13,
+                          color: Colors.white,
+                        ),
+                        unselectedLabelStyle: MyStyles.regularText(
+                          size: 13,
+                          color: AppTheme.graySubTitleColor,
+                        ),
                         tabs: const [
                           Tab(text: 'Main Information'),
                           Tab(text: 'Other Student'),
@@ -1424,7 +1446,8 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
                   Expanded(
                     child: (dataState.loading || formState.loading)
                         ? const AddStudentFormShimmer()
-                        : dataState.error != null && dataState.data == null
+                        : dataState.error != null &&
+                        dataState.data == null
                         ? Center(
                       child: Text(
                         dataState.error!,
@@ -1435,7 +1458,8 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
                       ),
                     )
                         : widget.editStudent != null
-                        ? _mainInfoTab(currentFields, additionalFields, data)
+                        ? _mainInfoTab(currentFields,
+                        additionalFields, data)
                         : TabBarView(
                       controller: _tabController,
                       children: [
@@ -1451,7 +1475,9 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
                   AnimatedBuilder(
                     animation: _tabController,
                     builder: (context, _) {
-                      if (widget.editStudent == null && _tabController.index == 1) return const SizedBox.shrink();
+                      if (widget.editStudent == null &&
+                          _tabController.index == 1)
+                        return const SizedBox.shrink();
                       return Container(
                         padding: const EdgeInsets.all(16),
                         color: Colors.white,
@@ -1467,124 +1493,102 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: BlocConsumer<AddStudentCubit, AddStudentState>(
+                              child: BlocConsumer<AddStudentCubit,
+                                  AddStudentState>(
                                 listener: (ctx, state) {
                                   if (state.success) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
+                                    ScaffoldMessenger.of(context)
+                                        .showSnackBar(
                                       SnackBar(
                                         content: Text(
                                           state.message ??
-                                              (widget.editStudent != null
+                                              (widget.editStudent !=
+                                                  null
                                                   ? 'Student updated successfully'
                                                   : 'Student added successfully'),
                                         ),
                                         backgroundColor: Colors.green,
                                       ),
                                     );
-
                                     StudentDetailsData? returnStudent =
                                         state.newStudent;
-
-                                    if (widget.editStudent != null) {
+                                    if (returnStudent == null &&
+                                        widget.editStudent != null) {
                                       final allFields = {
-                                        ..._ctrl.map((k, v) => MapEntry(k, v.text)),
+                                        ..._ctrl.map((k, v) =>
+                                            MapEntry(k, v.text)),
                                         ..._selectVal,
                                       };
-
-                                      returnStudent =
-                                          (state.newStudent ?? widget.editStudent!).copyWith(
-                                            name: allFields['student_name']
+                                      returnStudent = widget
+                                          .editStudent!
+                                          .copyWith(
+                                        name: allFields['student_name']
+                                            ?.toString(),
+                                        dob: allFields['date_of_birth']
+                                            ?.toString(),
+                                        address:
+                                        allFields['address']
+                                            ?.toString(),
+                                        caste: allFields['caste']
+                                            ?.toString(),
+                                        studentNicId: allFields[
+                                        'student_nic_id']
+                                            ?.toString() ??
+                                            allFields['nic_id']
                                                 ?.toString(),
-                                            email: allFields['student_email']
+                                        uidNo: allFields['uid_number']
+                                            ?.toString(),
+                                        fatherName:
+                                        allFields['father_name']
+                                            ?.toString(),
+                                        fatherPhone:
+                                        allFields['father_phone']
+                                            ?.toString(),
+                                        motherName:
+                                        allFields['mother_name']
+                                            ?.toString(),
+                                        landLineNo: allFields[
+                                        'landline_contact_number']
+                                            ?.toString() ??
+                                            allFields['landline_number']
                                                 ?.toString(),
-                                            phone: allFields['student_phone']
+                                        whatsappPhone: allFields[
+                                        'student_whatsapp_number']
+                                            ?.toString() ??
+                                            allFields['student_whatsapp']
                                                 ?.toString(),
-                                            dob: allFields['date_of_birth']
-                                                ?.toString(),
-                                            address: allFields['address']
-                                                ?.toString(),
-                                            caste: allFields['caste']?.toString(),
-                                            religion: allFields['religion']
-                                                ?.toString(),
-                                            pincode: allFields['pincode']
-                                                ?.toString(),
-                                            studentNicId:
-                                            allFields['student_nic_id']
-                                                ?.toString() ??
-                                                allFields['nic_id']?.toString(),
-                                            uidNo: allFields['uid_number']
-                                                ?.toString(),
-                                            landLineNo:
-                                            allFields['landline_contact_number']
-                                                ?.toString() ??
-                                                allFields['landline_number']
-                                                    ?.toString(),
-                                            whatsappPhone:
-                                            allFields['student_whatsapp_number']
-                                                ?.toString() ??
-                                                allFields['student_whatsapp']
-                                                    ?.toString(),
-                                            fatherName: allFields['father_name']
-                                                ?.toString(),
-                                            fatherPhone: allFields['father_phone']
-                                                ?.toString(),
-                                            fatherWphone:
+                                        fatherWphone: allFields[
+                                        'father_whatsapp_number']
+                                            ?.toString() ??
                                             allFields['father_whatsapp']
-                                                ?.toString() ??
-                                                allFields['father_whatsapp_number']
-                                                    ?.toString(),
-                                            fatherEmail: allFields['father_email']
                                                 ?.toString(),
-                                            motherName: allFields['mother_name']
-                                                ?.toString(),
-                                            motherPhone: allFields['mother_phone']
-                                                ?.toString(),
-                                            motherWphone:
-                                            allFields['mother_whatsapp']
-                                                ?.toString() ??
-                                                allFields['mother_whatsapp_number']
-                                                    ?.toString(),
-                                            motherEmail: allFields['mother_email']
-                                                ?.toString(),
-                                            aadharNo:
-                                            allFields['aadhar_card_number']
-                                                ?.toString(),
-                                            rollNo: allFields['roll_number']
-                                                ?.toString(),
-                                            regNo: allFields['registration_number']
-                                                ?.toString(),
-                                            srNo: allFields['sr_number']
-                                                ?.toString(),
-                                            rfidNo: allFields['rfid_number']
-                                                ?.toString(),
-                                            admissionNo:
-                                            allFields['admission_number']
-                                                ?.toString(),
-                                            panNo:
-                                            allFields['pen_number']
-                                                ?.toString() ??
-                                                allFields['pan_number']?.toString(),
-                                            schoolHouseId: allFields['house'],
-                                            transportMode:
-                                            allFields['transport_mode']
-                                                ?.toString(),
-                                            isRteStudent:
-                                            allFields['is_rte_student']
-                                                ?.toString(),
-                                            bloodGroup: allFields['blood_group']
-                                                ?.toString(),
-                                            gender: allFields['gender']
-                                                ?.toString()
-                                                ?.toLowerCase(),
-                                            schoolClassId: allFields['class'],
-                                            schoolClassSectionId: allFields['class_section'],
-                                          );
+                                        motherPhone:
+                                        allFields['mother_phone']
+                                            ?.toString(),
+                                        email: allFields['student_email']
+                                            ?.toString(),
+                                        phone: allFields['student_phone']
+                                            ?.toString(),
+                                        pincode:
+                                        allFields['pincode']
+                                            ?.toString(),
+                                        religion:
+                                        allFields['religion']
+                                            ?.toString(),
+                                        schoolClassId: _toInt(
+                                            allFields['class']),
+                                        schoolClassSectionId: _toInt(
+                                            allFields['class_section']),
+                                        schoolHouseId: _toInt(
+                                            allFields['house']),
+                                      );
                                     }
-
-                                    Navigator.pop(context, returnStudent);
+                                    Navigator.pop(
+                                        context, returnStudent);
                                   }
                                   if (state.error != null) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
+                                    ScaffoldMessenger.of(context)
+                                        .showSnackBar(
                                       SnackBar(
                                         content: Text(state.error!),
                                         backgroundColor: Colors.red,
@@ -1603,19 +1607,19 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
                                       : () {
                                     final allVisibleFields = [
                                       ...currentFields,
-                                      // Additional Information hidden, so not validated
                                     ];
-                                    final validationError = _validateForm(
-                                      allVisibleFields,
-                                      data,
-                                    );
+                                    final validationError =
+                                    _validateForm(
+                                        allVisibleFields,
+                                        data);
                                     if (validationError != null) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
                                         SnackBar(
-                                          content: Text(validationError),
-                                          backgroundColor: Colors.red,
+                                          content: Text(
+                                              validationError),
+                                          backgroundColor:
+                                          Colors.red,
                                         ),
                                       );
                                       return;
@@ -1626,22 +1630,34 @@ class _AdminAddStudentFormPageState extends State<AdminAddStudentFormPage>
                                       ),
                                       ..._selectVal,
                                     };
+
+                                    final allConfiguredFieldNames =
+                                    currentFields
+                                        .map((f) => f.name)
+                                        .toList();
+
                                     if (widget.editStudent != null) {
                                       ctx
                                           .read<AddStudentCubit>()
                                           .updateStudent(
                                         studentUuid:
-                                        widget.editStudent!.uuid ??
-                                            '',
+                                        widget.editStudent!.uuid ?? '',
                                         schoolId: widget.schoolId,
                                         fields: allFields,
                                         files: _files,
+                                        formDataModel: data,
+                                        allConfiguredFieldNames:
+                                        allConfiguredFieldNames,
+                                        existingStudent: widget.editStudent,
                                       );
                                     } else {
                                       ctx.read<AddStudentCubit>().submit(
                                         schoolId: widget.schoolId,
                                         fields: allFields,
                                         files: _files,
+                                        formDataModel: data,
+                                        allConfiguredFieldNames:
+                                        allConfiguredFieldNames,
                                       );
                                     }
                                   },
@@ -1672,7 +1688,8 @@ class _DotDateFormatter extends TextInputFormatter {
     if (newValue.text.length < oldValue.text.length) {
       return newValue;
     }
-    String digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    String digits =
+    newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
 
     if (digits.length > 8) digits = digits.substring(0, 8);
 
@@ -1684,7 +1701,8 @@ class _DotDateFormatter extends TextInputFormatter {
 
     return newValue.copyWith(
       text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
+      selection:
+      TextSelection.collapsed(offset: formatted.length),
     );
   }
 }

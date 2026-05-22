@@ -315,7 +315,7 @@ class _AdminOrderDetailPageState extends State<AdminOrderDetailPage> {
       _AdminRow('Order ID', '#${o.id}'),
       _AdminRow('Type', o.typeLabel),
       _AdminRow('Status', o.statusLabel),
-      _AdminRow('Order Date', o.orderedAt),
+      _AdminRow('Order Date', o.formattedOrderedAt),
       _AdminRow('Received At', o.receivedAtShort),
       if (o.studentCard == 1)
         _AdminRow('Student Card', 'Yes (Qty: ${o.studentCardQty})'),

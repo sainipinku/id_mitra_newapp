@@ -233,14 +233,14 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
                       color: AppTheme.graySubTitleColor,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    o.orderedAt,
-                    style: MyStyles.regularText(
-                      size: 12,
-                      color: AppTheme.graySubTitleColor,
-                    ),
-                  ),
+               //   const SizedBox(height: 4),
+                  // Text(
+                  //   o.orderedAt,
+                  //   style: MyStyles.regularText(
+                  //     size: 12,
+                  //     color: AppTheme.graySubTitleColor,
+                  //   ),
+                  // ),
                   const SizedBox(height: 10),
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -367,7 +367,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
       _Row('Order ID', '#${o.id}'),
       _Row('Type', o.typeLabel),
       _Row('Status', o.statusLabel),
-      _Row('Order Date', o.orderedAt),
+      _Row('Order Date', o.formattedOrderedAt),
       _Row('Received At', o.receivedAtShort),
       if (o.studentCard == 1)
         _Row('Student Card', 'Yes (Qty: ${o.studentCardQty})'),
