@@ -4,21 +4,70 @@ import 'package:idmitra/providers/staff_correction/staff_correction_cubit.dart';
 import 'package:sqflite/sqflite.dart';
 
 class StaffCorrectionLocalDS {
-  /// 📥 INSERT BATCH
-  Future<void> insertStaffCorrections(List<StaffCorrectionItem> list, String schoolId) async {
+
+  Future<void> insertStaffCorrections(
+    List<StaffCorrectionItem> list,
+    String schoolId, {
+    bool fromApi = false,
+    int page = 1,
+  }) async {
     final db = await DBHelper.db;
+    final schoolIdInt = int.tryParse(schoolId) ?? 0;
+
+    if (fromApi && page == 1) {
+      // Full replace: delete all local corrections for this school on first page
+      // so stale/offline data doesn't linger after a fresh API fetch.
+      await db.delete(
+        'staff_corrections',
+        where: 'school_id = ?',
+        whereArgs: [schoolIdInt],
+      );
+    } else if (fromApi && page > 1) {
+      // Subsequent pages: only remove rows whose uuid or staff_uuid matches
+      // incoming items to avoid duplicates without wiping earlier pages.
+      final correctionUuids = list
+          .where((item) => item.uuid != null && item.uuid!.isNotEmpty)
+          .map((item) => item.uuid!)
+          .toList();
+      final staffUuids = list
+          .where((item) =>
+              item.effectiveStaff?.uuid != null &&
+              item.effectiveStaff!.uuid.isNotEmpty)
+          .map((item) => item.effectiveStaff!.uuid)
+          .toList();
+
+      if (correctionUuids.isNotEmpty) {
+        await db.delete(
+          'staff_corrections',
+          where:
+              'school_id = ? AND uuid IN (${correctionUuids.map((_) => '?').join(',')})',
+          whereArgs: [schoolIdInt, ...correctionUuids],
+        );
+      }
+      if (staffUuids.isNotEmpty) {
+        await db.delete(
+          'staff_corrections',
+          where:
+              'school_id = ? AND staff_uuid IN (${staffUuids.map((_) => '?').join(',')})',
+          whereArgs: [schoolIdInt, ...staffUuids],
+        );
+      }
+    }
+
     final batch = db.batch();
 
     for (var item in list) {
-      if (item.id == 0) continue;
+      if (item.id == 0) continue; // skip truly invalid items
 
       final staff = item.effectiveStaff;
-      
+
       batch.insert(
         'staff_corrections',
         {
           "id": item.id,
           "uuid": item.uuid ?? "",
+          // store staff uuid separately for offline deduplication
+          "staff_uuid": staff?.uuid ?? "",
           "school_id": int.tryParse(schoolId) ?? 0,
           "status": item.status ?? "",
           "remark": item.remark ?? "",
@@ -38,7 +87,7 @@ class StaffCorrectionLocalDS {
     }
 
     await batch.commit(noResult: true);
-    print("Inserted Staff Corrections: ${list.length}");
+    print("Inserted Staff Corrections: ${list.length} (fromApi: $fromApi)");
   }
 
   /// 🔍 FETCH STAFF CORRECTIONS

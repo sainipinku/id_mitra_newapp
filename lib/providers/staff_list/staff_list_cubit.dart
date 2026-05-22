@@ -219,11 +219,13 @@ class StaffListCubit extends Cubit<StaffListState> {
 
       if (_lastSchoolId != null) {
         syncOfflineStaff(schoolId: _lastSchoolId!);
+        syncPendingStaffOrders(schoolId: _lastSchoolId!);
       } else {
         final school = await UserLocal.getSchool();
         final schoolId = school['schoolId'];
         if (schoolId != null && schoolId.isNotEmpty) {
           syncOfflineStaff(schoolId: schoolId);
+          syncPendingStaffOrders(schoolId: schoolId);
         }
       }
     });
@@ -1173,39 +1175,51 @@ class StaffListCubit extends Cubit<StaffListState> {
         endDate: effectiveDateTo,
       );
 
-      // Filter for staff orders only (orders that have staff info)
+      // Filter for staff orders only (orders that have staff info OR are offline staff orders)
+      // Exclude is_offline rows when online — they will be wiped by API sync
       final localStaffOrders = localOrders
-          .where((o) => o.staff != null)
+          .where((o) => o.staff != null || o.uuid.startsWith('offline_'))
           .map((o) => OrderStaffItem(
                 id: o.id,
                 uuid: o.uuid,
                 status: o.status,
                 type: o.type,
                 orderedAt: o.orderedAt,
-                staffName: o.staff?.name,
+                staffName: o.staff?.name ?? 'Pending Sync',
                 staffPhoto: o.staff?.profilePhotoUrl,
                 schoolName: o.school?.name,
               ))
           .toList();
 
-      if (localStaffOrders.isNotEmpty) {
-        final merged = reset ? localStaffOrders : [...state.orders, ...localStaffOrders];
+      final hasNet = await _hasInternet();
+
+      if (!hasNet) {
+        // Offline: emit local data as final state (no API call follows)
+        emit(state.copyWith(
+          ordersLoading: false,
+          ordersPaginationLoading: false,
+          orders: reset ? localStaffOrders : [...state.orders, ...localStaffOrders],
+          ordersTotal: localStaffOrders.length,
+          ordersHasMore: false,
+        ));
+        return;
+      }
+
+      // Online: exclude offline placeholders — API data is the source of truth
+      final onlineLocalOrders = localStaffOrders
+          .where((o) => !o.uuid.startsWith('offline_'))
+          .toList();
+
+      // For load-more only, show non-offline local data while API loads
+      if (!reset && onlineLocalOrders.isNotEmpty) {
+        final merged = [...state.orders, ...onlineLocalOrders];
         emit(state.copyWith(
           ordersLoading: false,
           ordersPaginationLoading: false,
           orders: merged,
-          ordersTotal: totalLocalCount, // This might be slightly inaccurate if student orders are mixed, but okay for offline
+          ordersTotal: totalLocalCount,
           ordersHasMore: merged.length < totalLocalCount,
         ));
-      }
-
-      // 2. Fetch from API (Only if online)
-      if (!await _hasInternet()) {
-        emit(state.copyWith(
-          ordersLoading: false,
-          ordersPaginationLoading: false,
-        ));
-        return;
       }
 
       String url =
@@ -1281,8 +1295,8 @@ class StaffListCubit extends Cubit<StaffListState> {
 
       final apiOrders = rawList.map((e) => OrderModel.fromJson(e as Map<String, dynamic>)).toList();
 
-      // Sync to local DB
-      await _orderLocalDS.insertOrders(apiOrders, schoolId);
+      // Sync to local DB — fromApi:true + page clears stale data on first page
+      await _orderLocalDS.insertOrders(apiOrders, schoolId, fromApi: true, page: currentPage);
 
       final newOrders = apiOrders.map((o) => OrderStaffItem(
         id: o.id,
@@ -1295,8 +1309,17 @@ class StaffListCubit extends Cubit<StaffListState> {
         schoolName: o.school?.name,
       )).toList();
 
-      final mergedOrders =
-      reset ? newOrders : [...state.orders, ...newOrders];
+      List<OrderStaffItem> mergedOrders;
+      if (reset) {
+        mergedOrders = newOrders;
+      } else {
+        // Deduplicate: remove from existing state any items whose uuid matches API items
+        final apiUuids = newOrders.map((o) => o.uuid).toSet();
+        final existing = state.orders
+            .where((o) => !apiUuids.contains(o.uuid) && !o.uuid.startsWith('offline_'))
+            .toList();
+        mergedOrders = [...existing, ...newOrders];
+      }
 
       emit(state.copyWith(
         ordersLoading: false,
@@ -1443,6 +1466,55 @@ class StaffListCubit extends Cubit<StaffListState> {
     required String status,
     String issueNote = '',
   }) async {
+    // Resolve uuids from current orders state
+    final uuids = state.orders
+        .where((o) => ids.contains(o.id) && o.uuid.isNotEmpty)
+        .map((o) => o.uuid)
+        .toList();
+
+    // ── OFFLINE: save locally ──
+    if (!await _hasInternet()) {
+      try {
+        // Save to pending_status_updates for later sync
+        await _orderLocalDS.savePendingStatusUpdate(
+          schoolId: schoolId,
+          uuids: uuids,
+          status: status,
+          issueNote: issueNote,
+        );
+
+        // Update local orders table immediately (savePendingStatusUpdate already does this by uuid)
+        // Also update state so UI reflects the change right away
+        final updatedOrders = state.orders.map((o) {
+          if (ids.contains(o.id)) {
+            return OrderStaffItem(
+              id: o.id,
+              uuid: o.uuid,
+              status: status,
+              type: o.type,
+              orderedAt: o.orderedAt,
+              staffName: o.staffName,
+              staffPhoto: o.staffPhoto,
+              schoolName: o.schoolName,
+            );
+          }
+          return o;
+        }).toList();
+
+        emit(state.copyWith(
+          orders: updatedOrders,
+          selectedStaffOrderIds: {},
+        ));
+
+        debugPrint("Saved offline status update for ${uuids.length} orders");
+        return true;
+      } catch (e) {
+        debugPrint("Failed to save offline status update: $e");
+        return false;
+      }
+    }
+
+    // ── ONLINE: send to API ──
     try {
       final api = ApiManager();
       final url = '${Config.baseUrl}auth/school/$schoolId/staff/orders/status';
@@ -1455,7 +1527,27 @@ class StaffListCubit extends Cubit<StaffListState> {
       if (response == null) return false;
       final json = jsonDecode(response.body);
       print('bulkUpdateStaffOrderStatus response: ${response.body}');
-      return json['success'] == true;
+      if (json['success'] == true) {
+        // Update state immediately on success
+        final updatedOrders = state.orders.map((o) {
+          if (ids.contains(o.id)) {
+            return OrderStaffItem(
+              id: o.id,
+              uuid: o.uuid,
+              status: status,
+              type: o.type,
+              orderedAt: o.orderedAt,
+              staffName: o.staffName,
+              staffPhoto: o.staffPhoto,
+              schoolName: o.schoolName,
+            );
+          }
+          return o;
+        }).toList();
+        emit(state.copyWith(orders: updatedOrders));
+        return true;
+      }
+      return false;
     } catch (e) {
       print('bulkUpdateStaffOrderStatus error: $e');
       return false;
@@ -1475,6 +1567,124 @@ class StaffListCubit extends Cubit<StaffListState> {
         default:
           return 'Failed to load staff (${response.statusCode})';
       }
+    }
+  }
+
+  /// Sync pending offline staff orders when internet is restored
+  Future<void> syncPendingStaffOrders({required String schoolId}) async {
+    if (!await _hasInternet()) return;
+
+    final db = await DBHelper.db;
+
+    // ── 1. Sync pending status updates ──
+    final pendingStatusRows = await _orderLocalDS.getAllPendingStatusUpdates();
+    final staffStatusRows = pendingStatusRows
+        .where((r) => (r['school_id'] as String?) == schoolId)
+        .toList();
+
+    for (final row in staffStatusRows) {
+      try {
+        final rowId = row['id'] as int;
+        final uuids = jsonDecode(row['uuids_json'] as String? ?? '[]') as List;
+        final status = row['status'] as String? ?? '';
+        final issueNote = row['issue_note'] as String? ?? '';
+
+        // Fetch order ids from local DB by uuid
+        final orderRows = await db.query(
+          'orders',
+          columns: ['id'],
+          where: 'uuid IN (${uuids.map((_) => '?').join(',')})',
+          whereArgs: uuids,
+        );
+        final orderIds = orderRows.map((r) => r['id'] as int).toList();
+
+        if (orderIds.isEmpty) {
+          await _orderLocalDS.deletePendingStatusUpdate(rowId);
+          continue;
+        }
+
+        final url = '${Config.baseUrl}auth/school/$schoolId/staff/orders/status';
+        final statusBody = <String, dynamic>{'status': status};
+        if (issueNote.isNotEmpty) statusBody['issueNote'] = issueNote;
+        final body = <String, dynamic>{'ids': orderIds, 'status': statusBody};
+
+        final response = await ApiManager().patchRequestWithBody(url, body);
+        if (response != null) {
+          final json = jsonDecode(response.body);
+          if (json['success'] == true) {
+            await _orderLocalDS.deletePendingStatusUpdate(rowId);
+            debugPrint("Synced pending status update id=$rowId");
+          }
+        }
+      } catch (e) {
+        debugPrint("Failed to sync pending status update: $e");
+      }
+    }
+
+    // ── 2. Sync pending new orders ──
+    final pendingRows = await db.query(
+      'pending_orders',
+      where: 'school_id = ?',
+      whereArgs: [schoolId],
+      orderBy: 'created_at ASC',
+    );
+
+    if (pendingRows.isNotEmpty) {
+      debugPrint("Syncing ${pendingRows.length} pending staff orders...");
+
+      for (final row in pendingRows) {
+        try {
+          final rowId = row['id'] as int;
+          final cardType = row['card_type'] as String? ?? '';
+          final cardUsers = jsonDecode(row['card_users_json'] as String? ?? '[]') as List;
+          final orderJson = jsonDecode(row['order_json'] as String? ?? '{}') as Map<String, dynamic>;
+          final tempUuid = orderJson['temp_uuid'] as String?;
+
+          final url = '${Config.baseUrl}auth/school/$schoolId/staff/orders';
+          final body = <String, dynamic>{
+            'card_type': cardType,
+            'card_users': cardUsers.cast<String>(),
+          };
+
+          final response = await ApiManager().postRequest(body, url);
+          if (response != null) {
+            final json = jsonDecode(response.body);
+            if (json['success'] == true) {
+              await db.delete('pending_orders', where: 'id = ?', whereArgs: [rowId]);
+              if (tempUuid != null) {
+                await _orderLocalDS.deleteOrderByUuid(tempUuid);
+              }
+
+              // Remove synced correction items from staff_corrections local table
+              // so they no longer appear in the correction list
+              final uuids = cardUsers.cast<String>().where((u) => u.isNotEmpty).toList();
+              if (uuids.isNotEmpty) {
+                await db.delete(
+                  'staff_corrections',
+                  where: 'uuid IN (${uuids.map((_) => '?').join(',')})',
+                  whereArgs: uuids,
+                );
+              }
+
+              debugPrint("Synced pending staff order id=$rowId, removed ${uuids.length} correction items");
+            }
+          }
+        } catch (e) {
+          debugPrint("Failed to sync pending staff order: $e");
+        }
+      }
+    }
+
+    // Refresh orders list after sync
+    if (_lastSchoolId != null) {
+      // Wipe ALL offline placeholder orders before refreshing so they never
+      // appear alongside the freshly-fetched server orders.
+      await db.delete(
+        'orders',
+        where: 'school_id = ? AND is_offline = 1',
+        whereArgs: [_lastSchoolId!],
+      );
+      fetchStaffOrders(schoolId: _lastSchoolId!, reset: true);
     }
   }
 }
