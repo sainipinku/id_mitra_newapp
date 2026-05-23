@@ -15,7 +15,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 29,
+      version: 36,
       onCreate: (db, version) async {
         await db.execute('''
         CREATE TABLE students (
@@ -85,8 +85,51 @@ class DBHelper {
         await _createPendingImageSettingsTable(db);
         await _createStaffTable(db);
         await _createStaffCorrectionTable(db);
+        await _createPendingAssignClassesTable(db);
+        await _createPendingRemoveClassesTable(db);
+        await _createPendingSignaturesTable(db);
+        await _createPendingPasswordsTable(db);
+        await _createAttendanceCacheTable(db);
+        await _createPendingAttendanceTable(db);
+        await _createHolidaysCacheTable(db);
+        await _createPendingAddHolidaysTable(db);
+        await _createPendingDeleteHolidaysTable(db);
+        await _createPendingUpdateHolidaysTable(db);
+        await _createServerStatusTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 36) {
+          await _createServerStatusTable(db);
+        }
+
+        if (oldVersion < 35) {
+          await _createHolidaysCacheTable(db);
+          await _createPendingAddHolidaysTable(db);
+          await _createPendingDeleteHolidaysTable(db);
+          await _createPendingUpdateHolidaysTable(db);
+        }
+
+        if (oldVersion < 34) {
+          await _createAttendanceCacheTable(db);
+          await _createPendingAttendanceTable(db);
+        }
+
+        if (oldVersion < 33) {
+          await _createPendingPasswordsTable(db);
+        }
+
+        if (oldVersion < 32) {
+          await _createPendingSignaturesTable(db);
+        }
+
+        if (oldVersion < 31) {
+          await _createPendingRemoveClassesTable(db);
+        }
+
+        if (oldVersion < 30) {
+          await _createPendingAssignClassesTable(db);
+        }
+
         if (oldVersion < 29) {
           // Add staff_uuid column to staff_corrections for deduplication of offline placeholders
           try {
@@ -572,6 +615,149 @@ class DBHelper {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_school_id ON schools(id)',
     );
+  }
+
+  static Future<void> _createPendingRemoveClassesTable(Database db) async {
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS pending_remove_classes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          school_id TEXT,
+          staff_uuid TEXT,
+          assigned_class_uuid TEXT,
+          created_at INTEGER
+        )
+        ''');
+  }
+
+  static Future<void> _createPendingPasswordsTable(Database db) async {
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS pending_passwords (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          school_id TEXT,
+          staff_uuid TEXT,
+          password TEXT,
+          created_at INTEGER
+        )
+        ''');
+  }
+
+  static Future<void> _createPendingSignaturesTable(Database db) async {
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS pending_signatures (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          school_id TEXT,
+          staff_uuid TEXT,
+          signature_path TEXT,
+          created_at INTEGER
+        )
+        ''');
+  }
+
+  static Future<void> _createPendingAssignClassesTable(Database db) async {
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS pending_assign_classes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          school_id TEXT,
+          staff_uuid TEXT,
+          class_id INTEGER,
+          section_ids_json TEXT,
+          class_name TEXT,
+          section_name TEXT,
+          created_at INTEGER
+        )
+        ''');
+  }
+
+  static Future<void> _createHolidaysCacheTable(Database db) async {
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS holidays_cache (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          school_id TEXT NOT NULL,
+          year INTEGER NOT NULL,
+          holidays_json TEXT NOT NULL,
+          updated_at INTEGER NOT NULL,
+          UNIQUE(school_id, year)
+        )
+        ''');
+  }
+
+  static Future<void> _createPendingAddHolidaysTable(Database db) async {
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS pending_add_holidays (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          school_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          dates_json TEXT NOT NULL,
+          type TEXT NOT NULL,
+          description TEXT,
+          created_at INTEGER NOT NULL
+        )
+        ''');
+  }
+
+  static Future<void> _createPendingDeleteHolidaysTable(Database db) async {
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS pending_delete_holidays (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          school_id TEXT NOT NULL,
+          holiday_id INTEGER NOT NULL,
+          created_at INTEGER NOT NULL
+        )
+        ''');
+  }
+
+  static Future<void> _createPendingUpdateHolidaysTable(Database db) async {
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS pending_update_holidays (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          school_id TEXT NOT NULL,
+          holiday_id INTEGER NOT NULL,
+          name TEXT NOT NULL,
+          dates_json TEXT NOT NULL,
+          type TEXT NOT NULL,
+          description TEXT,
+          created_at INTEGER NOT NULL
+        )
+        ''');
+  }
+
+  static Future<void> _createAttendanceCacheTable(Database db) async {
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS attendance_cache (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          school_id TEXT NOT NULL,
+          class_id INTEGER NOT NULL,
+          date TEXT NOT NULL,
+          classes_json TEXT NOT NULL,
+          students_json TEXT NOT NULL,
+          stats_json TEXT NOT NULL,
+          updated_at INTEGER NOT NULL,
+          UNIQUE(school_id, class_id, date)
+        )
+        ''');
+  }
+
+  static Future<void> _createPendingAttendanceTable(Database db) async {
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS pending_attendance (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          school_id TEXT NOT NULL,
+          class_id INTEGER NOT NULL,
+          date TEXT NOT NULL,
+          attendance_json TEXT NOT NULL,
+          created_at INTEGER NOT NULL
+        )
+        ''');
+  }
+
+  static Future<void> _createServerStatusTable(Database db) async {
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS server_status (
+          key TEXT PRIMARY KEY,
+          is_maintenance INTEGER NOT NULL DEFAULT 0,
+          updated_at INTEGER NOT NULL
+        )
+        ''');
   }
 
   static Future<void> _createStaffTable(Database db) async {

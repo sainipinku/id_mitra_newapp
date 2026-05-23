@@ -2,7 +2,9 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:idmitra/models/correction/CorrectionListModel.dart';
+import 'package:idmitra/models/staff/StaffListModel.dart';
 import 'package:idmitra/providers/correction/correction_state.dart';
+import 'package:idmitra/providers/staff_correction/staff_correction_state.dart';
 
 class PdfHelper {
   static Future<Uint8List> generateCorrectionChecklist({
@@ -124,6 +126,125 @@ class PdfHelper {
     );
 
     return pdf.save();
+  }
+
+  static Future<Uint8List> generateStaffCorrectionChecklist({
+    required String schoolName,
+    required List<StaffCorrectionItem> items,
+    required List<String> selectedColumnKeys,
+    required List<StaffDownloadColumn> allColumns,
+  }) async {
+    final pdf = pw.Document();
+    final Map<String, String> columnMap = {
+      for (var col in allColumns) col.key: col.label
+    };
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(24),
+        build: (context) {
+          final widgets = <pw.Widget>[];
+
+          widgets.add(
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 16),
+              child: pw.Text(
+                '$schoolName — Staff Correction List',
+                style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+              ),
+            ),
+          );
+
+          for (final item in items) {
+            final staff = item.effectiveStaff;
+            final name = staff?.name ?? '';
+            final initials = name
+                .split(' ')
+                .where((w) => w.isNotEmpty)
+                .take(2)
+                .map((w) => w[0].toUpperCase())
+                .join();
+
+            widgets.add(
+              pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 8),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
+                ),
+                padding: const pw.EdgeInsets.all(8),
+                child: pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Container(
+                      width: 36,
+                      height: 36,
+                      color: PdfColors.grey300,
+                      alignment: pw.Alignment.center,
+                      child: pw.Text(
+                        initials.isNotEmpty ? initials : '?',
+                        style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+                      ),
+                    ),
+                    pw.SizedBox(width: 10),
+                    pw.Expanded(
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          for (final key in selectedColumnKeys)
+                            pw.Padding(
+                              padding: const pw.EdgeInsets.only(bottom: 2),
+                              child: pw.Text(
+                                '${columnMap[key] ?? key} : ${_getStaffFieldValue(staff, key)}',
+                                style: const pw.TextStyle(fontSize: 9),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+          return widgets;
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  static String _getStaffFieldValue(StaffListModel? staff, String key) {
+    if (staff == null) return '-';
+    switch (key) {
+      case 'name':
+        return staff.name.isNotEmpty ? staff.name : '-';
+      case 'phone':
+        return staff.phone.isNotEmpty ? staff.phone : '-';
+      case 'email':
+        return staff.email.isNotEmpty ? staff.email : '-';
+      case 'designation':
+        return staff.designation.isNotEmpty ? staff.designation : '-';
+      case 'department':
+        return staff.department.isNotEmpty ? staff.department : '-';
+      case 'dob':
+        return staff.dob ?? '-';
+      case 'father_name':
+        return staff.fatherName ?? '-';
+      case 'mother_name':
+        return staff.motherName ?? '-';
+      case 'gender':
+        return staff.gender ?? '-';
+      case 'blood_group':
+        return staff.bloodGroup ?? '-';
+      case 'address':
+        return staff.address ?? '-';
+      case 'employee_id':
+        return staff.employeeId ?? '-';
+      default:
+        return '-';
+    }
   }
 
   static String _getStudentFieldValue(CorrectionStudentData? student, String key) {

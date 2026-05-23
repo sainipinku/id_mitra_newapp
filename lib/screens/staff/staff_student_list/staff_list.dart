@@ -601,35 +601,12 @@ class _StaffListBodyState extends State<_StaffListBody> {
                       if (i < state.list.length) {
                         final staff = state.list[i];
                         final isSelected = _selectedIds.contains(staff.id);
-                        return Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            GestureDetector(
-                              onTap: () => _toggleSelect(staff),
-                              behavior: HitTestBehavior.opaque,
-                              child: Padding(
-                                padding:
-                                const EdgeInsets.fromLTRB(0, 0, 4, 0),
-                                child: Checkbox(
-                                  value: isSelected,
-                                  onChanged: (_) => _toggleSelect(staff),
-                                  activeColor: AppTheme.btnColor,
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                      BorderRadius.circular(4)),
-                                  side: BorderSide(
-                                      color: AppTheme.graySubTitleColor),
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: _StaffCard(
-                                staff: staff,
-                                schoolId: widget.schoolId,
-                                cubit: widget.cubit,
-                              ),
-                            ),
-                          ],
+                        return _StaffCard(
+                          staff: staff,
+                          schoolId: widget.schoolId,
+                          cubit: widget.cubit,
+                          isSelected: isSelected,
+                          onToggle: () => _toggleSelect(staff),
                         );
                       }
                       return const Padding(
@@ -653,9 +630,16 @@ class _StaffCard extends StatefulWidget {
   final StaffListModel staff;
   final String schoolId;
   final StaffListCubit cubit;
+  final bool isSelected;
+  final VoidCallback? onToggle;
 
-  const _StaffCard(
-      {required this.staff, required this.schoolId, required this.cubit});
+  const _StaffCard({
+    required this.staff,
+    required this.schoolId,
+    required this.cubit,
+    this.isSelected = false,
+    this.onToggle,
+  });
 
   @override
   State<_StaffCard> createState() => _StaffCardState();
@@ -1321,11 +1305,38 @@ class _StaffCardState extends State<_StaffCard> {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: widget.isSelected
+              ? AppTheme.btnColor.withOpacity(0.06)
+              : Colors.white,
           borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: widget.isSelected
+                ? AppTheme.btnColor
+                : Colors.transparent,
+            width: 1.5,
+          ),
         ),
         child: Row(
           children: [
+            GestureDetector(
+              onTap: widget.onToggle,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: Checkbox(
+                    value: widget.isSelected,
+                    onChanged: (_) => widget.onToggle?.call(),
+                    activeColor: AppTheme.btnColor,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4)),
+                    side: BorderSide(color: AppTheme.graySubTitleColor),
+                  ),
+                ),
+              ),
+            ),
             Stack(
               children: [
                 GestureDetector(
