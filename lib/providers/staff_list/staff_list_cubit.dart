@@ -220,12 +220,20 @@ class StaffListCubit extends Cubit<StaffListState> {
       if (_lastSchoolId != null) {
         syncOfflineStaff(schoolId: _lastSchoolId!);
         syncPendingStaffOrders(schoolId: _lastSchoolId!);
+        syncPendingAssignedClasses(schoolId: _lastSchoolId!);
+        syncPendingRemoveClasses(schoolId: _lastSchoolId!);
+        syncPendingSignatures(schoolId: _lastSchoolId!);
+        syncPendingPasswords(schoolId: _lastSchoolId!);
       } else {
         final school = await UserLocal.getSchool();
         final schoolId = school['schoolId'];
         if (schoolId != null && schoolId.isNotEmpty) {
           syncOfflineStaff(schoolId: schoolId);
           syncPendingStaffOrders(schoolId: schoolId);
+          syncPendingAssignedClasses(schoolId: schoolId);
+          syncPendingRemoveClasses(schoolId: schoolId);
+          syncPendingSignatures(schoolId: schoolId);
+          syncPendingPasswords(schoolId: schoolId);
         }
       }
     });
@@ -736,9 +744,36 @@ class StaffListCubit extends Cubit<StaffListState> {
     required String password,
   }) async {
     emit(state.copyWith(changingPassword: true));
+
+    // ── Offline path ──
+    if (!await _hasInternet()) {
+      try {
+        final db = await DBHelper.db;
+        // Keep only the latest pending password for this staff (replace old one)
+        await db.delete('pending_passwords',
+            where: 'school_id = ? AND staff_uuid = ?',
+            whereArgs: [schoolId, uuid]);
+        await db.insert('pending_passwords', {
+          'school_id': schoolId,
+          'staff_uuid': uuid,
+          'password': password,
+          'created_at': DateTime.now().millisecondsSinceEpoch,
+        });
+        emit(state.copyWith(changingPassword: false));
+        debugPrint('Saved offline password change for staff $uuid');
+        return true;
+      } catch (e) {
+        debugPrint('Failed to save offline password: $e');
+        emit(state.copyWith(changingPassword: false));
+        return false;
+      }
+    }
+
+    // ── Online path ──
     try {
       final token = await UserSecureStorage.fetchToken();
-      final url = '${Config.baseUrl}${Routes.changeStaffPassword(schoolId, uuid)}';
+      final url =
+          '${Config.baseUrl}${Routes.changeStaffPassword(schoolId, uuid)}';
       final response = await http.put(
         Uri.parse(url),
         body: jsonEncode({
@@ -758,6 +793,57 @@ class StaffListCubit extends Cubit<StaffListState> {
     } catch (_) {
       emit(state.copyWith(changingPassword: false));
       return false;
+    }
+  }
+
+  Future<void> syncPendingPasswords({required String schoolId}) async {
+    if (!await _hasInternet()) return;
+
+    final db = await DBHelper.db;
+    final pendingRows = await db.query(
+      'pending_passwords',
+      where: 'school_id = ?',
+      whereArgs: [schoolId],
+      orderBy: 'created_at ASC',
+    );
+
+    if (pendingRows.isEmpty) return;
+
+    debugPrint('Syncing ${pendingRows.length} pending password changes...');
+
+    final token = await UserSecureStorage.fetchToken();
+    if (token == null) return;
+
+    for (final row in pendingRows) {
+      try {
+        final rowId = row['id'] as int;
+        final staffUuid = row['staff_uuid'] as String;
+        final password = row['password'] as String;
+
+        final url =
+            '${Config.baseUrl}${Routes.changeStaffPassword(schoolId, staffUuid)}';
+        final response = await http.put(
+          Uri.parse(url),
+          body: jsonEncode({
+            'password': password,
+            'password_confirmation': password,
+          }),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+        );
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          await db.delete('pending_passwords',
+              where: 'id = ?', whereArgs: [rowId]);
+          debugPrint(
+              'Synced pending password change id=$rowId for staff $staffUuid');
+        }
+      } catch (e) {
+        debugPrint('Failed to sync pending password change: $e');
+      }
     }
   }
 
@@ -832,7 +918,10 @@ class StaffListCubit extends Cubit<StaffListState> {
 
     final String cacheKey = 'assigned_classes_$uuid';
 
-    // ── STEP 1: Load from local DB first ──
+    // ── Load offline pending assign class requests for this staff ──
+    final pendingItems = await _getPendingAssignedClasses(schoolId, uuid);
+
+    // ── STEP 1: Load from local DB cache ──
     try {
       final db = await DBHelper.db;
       final rows = await db.query(
@@ -847,23 +936,72 @@ class StaffListCubit extends Cubit<StaffListState> {
             (jsonDecode(row['json_data'] as String? ?? '[]') as List)
                 .map((e) => Map<String, dynamic>.from(e))
                 .toList();
-        if (localData.isNotEmpty) {
-          debugPrint('fetchAssignedClasses: Loaded ${localData.length} classes from local DB');
+        // Merge: pending items first, then cached (avoid duplicates by assigned_uuid)
+        final merged = _mergePendingWithCached(pendingItems, localData);
+        if (merged.isNotEmpty) {
+          debugPrint('fetchAssignedClasses: Loaded ${merged.length} classes (${pendingItems.length} pending)');
           emit(state.copyWith(
             assignedClassesLoading: false,
-            assignedClasses: localData,
+            assignedClasses: merged,
           ));
           // Sync from API in background
           _syncAssignedClassesFromApi(schoolId, uuid, cacheKey);
-          return localData;
+          return merged;
         }
       }
     } catch (e) {
       debugPrint('fetchAssignedClasses local load error: $e');
     }
 
-    // ── STEP 2: Fetch from API if no local data ──
+    // ── STEP 2: If only pending items exist, show them and try API in background ──
+    if (pendingItems.isNotEmpty) {
+      emit(state.copyWith(assignedClassesLoading: false, assignedClasses: pendingItems));
+      _syncAssignedClassesFromApi(schoolId, uuid, cacheKey);
+      return pendingItems;
+    }
+
+    // ── STEP 3: Fetch from API if no local data ──
     return await _syncAssignedClassesFromApi(schoolId, uuid, cacheKey, emitLoading: true);
+  }
+
+  List<Map<String, dynamic>> _mergePendingWithCached(
+    List<Map<String, dynamic>> pending,
+    List<Map<String, dynamic>> cached,
+  ) {
+    final result = <Map<String, dynamic>>[...pending];
+    final pendingUuids = pending.map((e) => e['assigned_uuid']).toSet();
+    for (final item in cached) {
+      if (!pendingUuids.contains(item['assigned_uuid'])) {
+        result.add(item);
+      }
+    }
+    return result;
+  }
+
+  Future<List<Map<String, dynamic>>> _getPendingAssignedClasses(
+    String schoolId,
+    String staffUuid,
+  ) async {
+    try {
+      final db = await DBHelper.db;
+      final rows = await db.query(
+        'pending_assign_classes',
+        where: 'school_id = ? AND staff_uuid = ?',
+        whereArgs: [schoolId, staffUuid],
+        orderBy: 'created_at ASC',
+      );
+      return rows.map((row) {
+        final sectionName = (row['section_name'] as String?) ?? '';
+        return <String, dynamic>{
+          'name': row['class_name'] ?? '',
+          'sections': sectionName.isNotEmpty ? [{'name': sectionName}] : [],
+          'assigned_uuid': 'offline_${row['id']}',
+          'is_pending': true,
+        };
+      }).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<List<Map<String, dynamic>>> _syncAssignedClassesFromApi(
@@ -915,11 +1053,15 @@ class StaffListCubit extends Cubit<StaffListState> {
           debugPrint('fetchAssignedClasses local save error: $e');
         }
 
+        // Merge API result with any still-pending offline items
+        final pendingItems = await _getPendingAssignedClasses(schoolId, uuid);
+        final merged = _mergePendingWithCached(pendingItems, result);
+
         emit(state.copyWith(
           assignedClassesLoading: false,
-          assignedClasses: result,
+          assignedClasses: merged,
         ));
-        return result;
+        return merged;
       }
     } catch (e) {
       debugPrint('fetchAssignedClasses API sync error: $e');
@@ -933,15 +1075,40 @@ class StaffListCubit extends Cubit<StaffListState> {
     required String uuid,
     required int classId,
     required List<int> sectionIds,
+    String className = '',
+    String sectionName = '',
   }) async {
     emit(state.copyWith(assigningClass: true));
     try {
+      if (!await _hasInternet()) {
+        // Save to pending_assign_classes table
+        final db = await DBHelper.db;
+        final rowId = await db.insert('pending_assign_classes', {
+          'school_id': schoolId,
+          'staff_uuid': uuid,
+          'class_id': classId,
+          'section_ids_json': jsonEncode(sectionIds),
+          'class_name': className,
+          'section_name': sectionName,
+          'created_at': DateTime.now().millisecondsSinceEpoch,
+        });
+        // Optimistically add to state
+        final pendingEntry = <String, dynamic>{
+          'name': className,
+          'sections': sectionName.isNotEmpty ? [{'name': sectionName}] : [],
+          'assigned_uuid': 'offline_$rowId',
+          'is_pending': true,
+        };
+        final updated = [...state.assignedClasses, pendingEntry];
+        emit(state.copyWith(assigningClass: false, assignedClasses: updated));
+        debugPrint('Saved offline assign class: $className for staff $uuid');
+        return true;
+      }
+
       final token = await UserSecureStorage.fetchToken();
       final url =
           '${Config.baseUrl}${Routes.staffAssignClass(schoolId, uuid)}';
       final body = jsonEncode({'class': classId, 'section': sectionIds});
-      print('AssignClass URL: $url');
-      print('AssignClass Body: $body');
       final response = await http.post(
         Uri.parse(url),
         body: body,
@@ -951,14 +1118,12 @@ class StaffListCubit extends Cubit<StaffListState> {
           'Content-Type': 'application/json',
         },
       );
-      print('AssignClass Status: ${response.statusCode}');
-      print('AssignClass Response: ${response.body}');
       final success =
           response.statusCode == 200 || response.statusCode == 201;
       emit(state.copyWith(assigningClass: false));
       return success;
     } catch (e) {
-      print('AssignClass Error: $e');
+      debugPrint('AssignClass Error: $e');
       emit(state.copyWith(assigningClass: false));
       return false;
     }
@@ -967,7 +1132,76 @@ class StaffListCubit extends Cubit<StaffListState> {
   Future<bool> removeAssignedClass({
     required String schoolId,
     required String assignedClassUuid,
+    String staffUuid = '',
   }) async {
+    // ── Case 1: Offline-pending assignment (never synced) ──
+    if (assignedClassUuid.startsWith('offline_')) {
+      final id = int.tryParse(assignedClassUuid.replaceFirst('offline_', ''));
+      if (id != null) {
+        try {
+          final db = await DBHelper.db;
+          await db.delete('pending_assign_classes', where: 'id = ?', whereArgs: [id]);
+          final updated = state.assignedClasses
+              .where((c) => c['assigned_uuid'] != assignedClassUuid)
+              .toList();
+          emit(state.copyWith(assignedClasses: updated));
+          return true;
+        } catch (_) {
+          return false;
+        }
+      }
+      return false;
+    }
+
+    // ── Case 2: Offline — save pending removal to local DB ──
+    if (!await _hasInternet()) {
+      try {
+        final db = await DBHelper.db;
+        await db.insert('pending_remove_classes', {
+          'school_id': schoolId,
+          'staff_uuid': staffUuid,
+          'assigned_class_uuid': assignedClassUuid,
+          'created_at': DateTime.now().millisecondsSinceEpoch,
+        });
+        // Optimistically remove from state and home_cache
+        final updated = state.assignedClasses
+            .where((c) => c['assigned_uuid'] != assignedClassUuid)
+            .toList();
+        emit(state.copyWith(assignedClasses: updated));
+
+        // Update home_cache so the item stays removed after sheet reopens
+        if (staffUuid.isNotEmpty) {
+          final cacheKey = 'assigned_classes_$staffUuid';
+          try {
+            final rows = await db.query('home_cache',
+                where: 'key = ?', whereArgs: [cacheKey], limit: 1);
+            if (rows.isNotEmpty) {
+              final current =
+                  (jsonDecode(rows.first['json_data'] as String? ?? '[]') as List)
+                      .map((e) => Map<String, dynamic>.from(e))
+                      .where((e) => e['assigned_uuid'] != assignedClassUuid)
+                      .toList();
+              await db.insert(
+                'home_cache',
+                {
+                  'key': cacheKey,
+                  'json_data': jsonEncode(current),
+                  'updated_at': DateTime.now().millisecondsSinceEpoch,
+                },
+                conflictAlgorithm: ConflictAlgorithm.replace,
+              );
+            }
+          } catch (_) {}
+        }
+        debugPrint('Saved offline remove class: $assignedClassUuid');
+        return true;
+      } catch (e) {
+        debugPrint('Failed to save offline remove class: $e');
+        return false;
+      }
+    }
+
+    // ── Case 3: Online ──
     emit(state.copyWith(removingClass: true));
     try {
       final token = await UserSecureStorage.fetchToken();
@@ -987,6 +1221,108 @@ class StaffListCubit extends Cubit<StaffListState> {
     } catch (_) {
       emit(state.copyWith(removingClass: false));
       return false;
+    }
+  }
+
+  Future<void> syncPendingRemoveClasses({required String schoolId}) async {
+    if (!await _hasInternet()) return;
+
+    final db = await DBHelper.db;
+    final pendingRows = await db.query(
+      'pending_remove_classes',
+      where: 'school_id = ?',
+      whereArgs: [schoolId],
+      orderBy: 'created_at ASC',
+    );
+
+    if (pendingRows.isEmpty) return;
+
+    debugPrint("Syncing ${pendingRows.length} pending remove classes...");
+
+    final token = await UserSecureStorage.fetchToken();
+    if (token == null) return;
+
+    for (final row in pendingRows) {
+      try {
+        final rowId = row['id'] as int;
+        final assignedClassUuid = row['assigned_class_uuid'] as String;
+        final staffUuid = row['staff_uuid'] as String? ?? '';
+
+        final url = '${Config.baseUrl}${Routes.staffRemoveAssignedClass(schoolId, assignedClassUuid)}';
+        final response = await http.delete(
+          Uri.parse(url),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Accept': 'application/json',
+          },
+        );
+
+        if (response.statusCode == 200 ||
+            response.statusCode == 201 ||
+            response.statusCode == 404) {
+          await db.delete('pending_remove_classes', where: 'id = ?', whereArgs: [rowId]);
+          // Refresh cache from API for this staff
+          if (staffUuid.isNotEmpty) {
+            final cacheKey = 'assigned_classes_$staffUuid';
+            await _syncAssignedClassesFromApi(schoolId, staffUuid, cacheKey);
+          }
+          debugPrint("Synced pending remove class id=$rowId, assigned_uuid=$assignedClassUuid");
+        }
+      } catch (e) {
+        debugPrint("Failed to sync pending remove class: $e");
+      }
+    }
+  }
+
+  Future<void> syncPendingAssignedClasses({required String schoolId}) async {
+    if (!await _hasInternet()) return;
+
+    final db = await DBHelper.db;
+    final pendingRows = await db.query(
+      'pending_assign_classes',
+      where: 'school_id = ?',
+      whereArgs: [schoolId],
+      orderBy: 'created_at ASC',
+    );
+
+    if (pendingRows.isEmpty) return;
+
+    debugPrint("Syncing ${pendingRows.length} pending assign classes...");
+
+    final token = await UserSecureStorage.fetchToken();
+    if (token == null) return;
+
+    for (final row in pendingRows) {
+      try {
+        final rowId = row['id'] as int;
+        final staffUuid = row['staff_uuid'] as String;
+        final classId = row['class_id'] as int;
+        final sectionIds = (jsonDecode(row['section_ids_json'] as String? ?? '[]') as List)
+            .map((e) => e as int)
+            .toList();
+
+        final url = '${Config.baseUrl}${Routes.staffAssignClass(schoolId, staffUuid)}';
+        final body = jsonEncode({'class': classId, 'section': sectionIds});
+        final response = await http.post(
+          Uri.parse(url),
+          body: body,
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+        );
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          await db.delete('pending_assign_classes', where: 'id = ?', whereArgs: [rowId]);
+          // Refresh cache from API for this staff
+          final cacheKey = 'assigned_classes_$staffUuid';
+          await _syncAssignedClassesFromApi(schoolId, staffUuid, cacheKey);
+          debugPrint("Synced pending assign class id=$rowId for staff $staffUuid");
+        }
+      } catch (e) {
+        debugPrint("Failed to sync pending assign class: $e");
+      }
     }
   }
 
@@ -1077,6 +1413,34 @@ class StaffListCubit extends Cubit<StaffListState> {
       signatureUploading: true,
       clearSignatureMessages: true,
     ));
+
+    // ── Offline path ──
+    if (!await _hasInternet()) {
+      try {
+        final db = await DBHelper.db;
+        await db.insert('pending_signatures', {
+          'school_id': schoolId,
+          'staff_uuid': uuid,
+          'signature_path': imagePath,
+          'created_at': DateTime.now().millisecondsSinceEpoch,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        emit(state.copyWith(
+          signatureUploading: false,
+          signatureUploadSuccess: 'Signature saved (will sync when online)',
+        ));
+        debugPrint('Saved offline signature for staff $uuid');
+        return imagePath;
+      } catch (e) {
+        debugPrint('Failed to save offline signature: $e');
+        emit(state.copyWith(
+          signatureUploading: false,
+          signatureUploadError: 'Failed to save signature',
+        ));
+        return null;
+      }
+    }
+
+    // ── Online path ──
     try {
       final token = await UserSecureStorage.fetchToken();
       if (token == null) {
@@ -1105,13 +1469,59 @@ class StaffListCubit extends Cubit<StaffListState> {
         ));
         return signatureUrl;
       }
-    } catch (_) {
-    }
+    } catch (_) {}
+
     emit(state.copyWith(
       signatureUploading: false,
       signatureUploadError: 'Failed to upload signature',
     ));
     return null;
+  }
+
+  Future<void> syncPendingSignatures({required String schoolId}) async {
+    if (!await _hasInternet()) return;
+
+    final db = await DBHelper.db;
+    final pendingRows = await db.query(
+      'pending_signatures',
+      where: 'school_id = ?',
+      whereArgs: [schoolId],
+      orderBy: 'created_at ASC',
+    );
+
+    if (pendingRows.isEmpty) return;
+
+    debugPrint('Syncing ${pendingRows.length} pending signatures...');
+
+    final token = await UserSecureStorage.fetchToken();
+    if (token == null) return;
+
+    for (final row in pendingRows) {
+      try {
+        final rowId = row['id'] as int;
+        final staffUuid = row['staff_uuid'] as String;
+        final signaturePath = row['signature_path'] as String;
+
+        final url =
+            '${Config.baseUrl}${Routes.uploadStaffSignature(schoolId, staffUuid)}';
+        final request = http.MultipartRequest('POST', Uri.parse(url));
+        request.headers['Authorization'] = 'Bearer $token';
+        request.headers['Accept'] = 'application/json';
+        request.files
+            .add(await http.MultipartFile.fromPath('signature', signaturePath));
+        final streamed = await request.send();
+        final response = await http.Response.fromStream(streamed);
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          await db.delete('pending_signatures',
+              where: 'id = ?', whereArgs: [rowId]);
+          debugPrint(
+              'Synced pending signature id=$rowId for staff $staffUuid');
+        }
+      } catch (e) {
+        debugPrint('Failed to sync pending signature: $e');
+      }
+    }
   }
 
   void clearSignatureMessages() {

@@ -58,48 +58,7 @@ import 'dart:convert';
    } 
  
  
-   Future<PartnerDashboardModel> _injectLocalSchoolCount(PartnerDashboardModel model) async { 
-     try { 
-       final localSchoolData = await _loadFromLocal('schools_list_page_1_search_'); 
-       if (localSchoolData != null && model.data != null) { 
-         final List schoolsList = localSchoolData['data']?['schools']?['data'] ?? []; 
-         final int apiTotal = localSchoolData['data']?['schools']?['total'] ?? 0; 
-         final int localCount = apiTotal > 0 ? apiTotal : schoolsList.length; 
-         if (localCount > 0) { 
-           final updatedSchools = Employees( 
-             total: localCount, 
-             active: model.data!.schools?.active, 
-             inactive: model.data!.schools?.inactive, 
-           ); 
-           final updatedData = Data( 
-             filters: model.data!.filters, 
-             orders: model.data!.orders, 
-             schools: updatedSchools, 
-             users: model.data!.users, 
-             schoolAdmins: model.data!.schoolAdmins, 
-             students: model.data!.students, 
-             subPartners: model.data!.subPartners, 
-             employees: model.data!.employees, 
-             partner: model.data!.partner, 
-             period: model.data!.period, 
-             dateRange: model.data!.dateRange, 
-             summary: model.data!.summary, 
-           ); 
-           print('HomeCubit: injected local school count = $localCount'); 
-           return PartnerDashboardModel( 
-             success: model.success, 
-             message: model.message, 
-             data: updatedData, 
-           ); 
-         } 
-       } 
-     } catch (e) { 
-       print('HomeCubit: local school count error: $e'); 
-     } 
-     return model; 
-   } 
- 
- 
+
    Future<PartnerDashboardModel> _injectLocalStudentCount(PartnerDashboardModel model) async { 
      try { 
        final localCount = await localDS.getCount(); 
@@ -146,12 +105,9 @@ import 'dart:convert';
      if (localDashboard != null && localUser != null) { 
        var dashboardModel = PartnerDashboardModel.fromJson(localDashboard); 
        final userModel = UserDetailsModel.fromJson(localUser); 
- 
-       // Inject local student count from students table 
+
        dashboardModel = await _injectLocalStudentCount(dashboardModel); 
-       // Inject local school count from home_cache 
-       dashboardModel = await _injectLocalSchoolCount(dashboardModel); 
- 
+
        print('Full Local Dashboard Data: dashboard=${dashboardModel.data?.schools?.total} schools, students=${dashboardModel.data?.students?.total}'); 
        print('Full Local User Data: user=${userModel.user?.name}'); 
  

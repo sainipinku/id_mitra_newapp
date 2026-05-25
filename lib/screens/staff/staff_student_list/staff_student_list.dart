@@ -825,46 +825,14 @@ class _StaffStudentsTabState extends State<_StaffStudentsTab> {
                                 } catch (_) {}
                                 final isSelected = student.id != null &&
                                     _selectedIds.contains(student.id);
-                                return Row(
-                                  crossAxisAlignment:
-                                  CrossAxisAlignment.center,
-                                  children: [
-                                    GestureDetector(
-                                      onTap: () =>
-                                          _toggleSelect(student),
-                                      behavior:
-                                      HitTestBehavior.opaque,
-                                      child: Padding(
-                                        padding:
-                                        const EdgeInsets.fromLTRB(
-                                            0, 0, 4, 0),
-                                        child: Checkbox(
-                                          value: isSelected,
-                                          onChanged: (_) =>
-                                              _toggleSelect(student),
-                                          activeColor:
-                                          AppTheme.btnColor,
-                                          shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                              BorderRadius.circular(
-                                                  4)),
-                                          side: BorderSide(
-                                              color: AppTheme
-                                                  .graySubTitleColor),
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: StudentCard(
-                                        key: ValueKey(state
-                                            .studentsList[index].uuid),
-                                        studentData: student,
-                                        schoolId: widget.schoolId,
-                                        schoolIntId: schoolIntId,
-                                        imageShape: imageShape,
-                                      ),
-                                    ),
-                                  ],
+                                return StudentCard(
+                                  key: ValueKey(state.studentsList[index].uuid),
+                                  studentData: student,
+                                  schoolId: widget.schoolId,
+                                  schoolIntId: schoolIntId,
+                                  imageShape: imageShape,
+                                  isSelected: isSelected,
+                                  onToggle: () => _toggleSelect(student),
                                 );
                               }
                               return const Padding(
@@ -1376,6 +1344,7 @@ class _StaffCorrectionTabState extends State<_StaffCorrectionTab> {
                                     .selectedStudentIds
                                     .contains(item.id);
                                 return _CorrectionStudentCard(
+                                  key: ValueKey(item.id),
                                   item: item,
                                   isSelected: isSelected,
                                   imageShape: imageShape,
@@ -1458,9 +1427,8 @@ class _StaffCorrectionTabState extends State<_StaffCorrectionTab> {
     showDialog(
       context: ctx,
       barrierDismissible: false,
-      builder: (_) => BlocProvider(
-        create: (_) => CorrectionCubit()
-          ..fetchDownloadColumns(schoolId: widget.schoolId),
+      builder: (_) => BlocProvider.value(
+        value: ctx.read<CorrectionCubit>(),
         child: _DownloadChecklistDialog(schoolId: widget.schoolId),
       ),
     );
@@ -1564,6 +1532,7 @@ class _CorrectionStudentCard extends StatefulWidget {
   final String? imageShape;
 
   const _CorrectionStudentCard({
+    super.key,
     required this.item,
     required this.isSelected,
     required this.onToggle,
@@ -1586,6 +1555,15 @@ class _CorrectionStudentCardState
     super.initState();
     final s = widget.item.student;
     _currentPhotoUrl = s?.photoUrl ?? s?.photo ?? '';
+  }
+
+  @override
+  void didUpdateWidget(covariant _CorrectionStudentCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.item.id != widget.item.id) {
+      final s = widget.item.student;
+      _currentPhotoUrl = s?.photoUrl ?? s?.photo ?? '';
+    }
   }
 
   Future<void> _fromCamera() async {

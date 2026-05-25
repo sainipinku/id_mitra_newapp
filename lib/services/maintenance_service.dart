@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:idmitra/local_db/maintenance_local_ds.dart';
 import 'package:idmitra/utils/GlobalContext.dart';
 
 class MaintenanceService {
@@ -17,6 +20,8 @@ class MaintenanceService {
   Timer? _retryTimer;
   Timer? _countdownTimer;
   int _countdown = _retryIntervalSeconds;
+
+  final _localDS = MaintenanceLocalDS();
 
   final StreamController<bool> _maintenanceController =
       StreamController<bool>.broadcast();
@@ -104,10 +109,39 @@ class MaintenanceService {
     );
   }
 
+  Future<bool> _hasInternet() async {
+    try {
+      final c = await Connectivity().checkConnectivity();
+      if (c.contains(ConnectivityResult.none) && c.length == 1) return false;
+      final r = await InternetAddress.lookup('google.com');
+      return r.isNotEmpty && r[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _checkServerHealth({bool isStartup = false}) async {
     if (_isChecking || _healthCheckUrl == null) return;
     _isChecking = true;
 
+    // ── OFFLINE: use last known status from local DB ──
+    if (!await _hasInternet()) {
+      _isChecking = false;
+      final lastMaintenance = await _localDS.getLastKnownMaintenance();
+      if (lastMaintenance == true) {
+        // Server was in maintenance last time we checked — keep showing screen
+        if (!_isMaintenanceVisible) {
+          onServerDown();
+        } else {
+          _scheduleNextCheck();
+        }
+      }
+      // If lastMaintenance is false or null (server was up / never checked),
+      // do nothing — offline with a healthy server is just no-internet, not maintenance.
+      return;
+    }
+
+    // ── ONLINE: hit the health endpoint ──
     bool serverUp = false;
     try {
       final response = await http
@@ -121,6 +155,9 @@ class MaintenanceService {
     } catch (_) {
       serverUp = false;
     }
+
+    // Save the result to local DB so offline reads stay accurate
+    await _localDS.saveStatus(!serverUp);
 
     _isChecking = false;
 

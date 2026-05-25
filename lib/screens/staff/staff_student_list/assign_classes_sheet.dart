@@ -46,10 +46,12 @@ class _AssignClassesSheetState extends State<AssignClassesSheet> {
       schoolId: widget.schoolId,
       uuid: widget.staffUuid,
     );
-    setState(() {
-      _assignedClasses = result;
-      _loadingAssigned = false;
-    });
+    if (mounted) {
+      setState(() {
+        _assignedClasses = result;
+        _loadingAssigned = false;
+      });
+    }
   }
 
   Future<void> _addClass() async {
@@ -60,6 +62,15 @@ class _AssignClassesSheetState extends State<AssignClassesSheet> {
     final sectionId = parts.length > 1 ? int.tryParse(parts[1]) : null;
     final sectionIds = sectionId != null ? [sectionId] : <int>[];
 
+    // Get class name from available classes for offline display
+    final orderState = context.read<OrdersCubit>().state;
+    final selectedCls = orderState.availableClasses.firstWhere(
+      (c) => '${c.classId}_${c.sectionId ?? ''}' == _selectedKey,
+      orElse: () => OrderClass(classId: classId, name: '', sectionName: ''),
+    );
+    final className = selectedCls.nameWithprefix ?? selectedCls.name;
+    final sectionName = selectedCls.sectionName;
+
     setState(() => _adding = true);
 
     final success = await widget.cubit.assignClass(
@@ -67,20 +78,38 @@ class _AssignClassesSheetState extends State<AssignClassesSheet> {
       uuid: widget.staffUuid,
       classId: classId,
       sectionIds: sectionIds,
+      className: className,
+      sectionName: sectionName,
     );
 
-    setState(() => _adding = false);
+    if (!mounted) return;
+    setState(() {
+      _adding = false;
+      if (success) _selectedKey = null;
+    });
 
-    if (success && mounted) {
-      setState(() => _selectedKey = null);
+    if (success) {
+      // Refresh list — offline success already updated state in cubit,
+      // fetchAssigned merges pending + cached so either way is correct
       await _fetchAssigned();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Class assigned successfully'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle,
+                    color: Colors.white, size: 16),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('Class assigned (will sync when online)'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -95,13 +124,26 @@ class _AssignClassesSheetState extends State<AssignClassesSheet> {
     final assignedUuid = cls['assigned_uuid']?.toString() ?? '';
     if (assignedUuid.isEmpty) return;
 
+    final isPending = cls['is_pending'] == true;
+
     final success = await widget.cubit.removeAssignedClass(
       schoolId: widget.schoolId,
       assignedClassUuid: assignedUuid,
+      staffUuid: widget.staffUuid,
     );
 
     if (success) {
-      await _fetchAssigned();
+      // State already updated optimistically in cubit — just sync the local list
+      if (mounted) {
+        setState(() {
+          _assignedClasses =
+              _assignedClasses.where((c) => c['assigned_uuid'] != assignedUuid).toList();
+        });
+        // If it was an online item removed while online, refresh from server
+        if (!isPending && !assignedUuid.startsWith('offline_')) {
+          await _fetchAssigned();
+        }
+      }
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -403,6 +445,7 @@ class _AssignClassesSheetState extends State<AssignClassesSheet> {
                                     : s.toString())
                                 .where((s) => s.isNotEmpty)
                                 .join(', ');
+                            final isPending = cls['is_pending'] == true;
 
                             return Padding(
                               padding: const EdgeInsets.symmetric(
@@ -410,10 +453,45 @@ class _AssignClassesSheetState extends State<AssignClassesSheet> {
                               child: Row(
                                 children: [
                                   Expanded(
-                                    child: Text(className,
-                                        style: MyStyles.regularText(
-                                            size: 14,
-                                            color: AppTheme.black_Color)),
+                                    child: Row(
+                                      children: [
+                                        Flexible(
+                                          child: Text(className,
+                                              style: MyStyles.regularText(
+                                                  size: 14,
+                                                  color: AppTheme.black_Color)),
+                                        ),
+                                        if (isPending) ...[
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.orange.shade100,
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(Icons.sync,
+                                                    size: 10,
+                                                    color:
+                                                        Colors.orange.shade700),
+                                                const SizedBox(width: 3),
+                                                Text('Pending',
+                                                    style: TextStyle(
+                                                        fontSize: 9,
+                                                        color: Colors
+                                                            .orange.shade700,
+                                                        fontWeight:
+                                                            FontWeight.bold)),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                   ),
                                   Expanded(
                                     child: Text(
@@ -427,8 +505,13 @@ class _AssignClassesSheetState extends State<AssignClassesSheet> {
                                   ),
                                   GestureDetector(
                                     onTap: () => _removeClass(cls),
-                                    child: const Icon(Icons.delete_outline,
-                                        color: Colors.red, size: 20),
+                                    child: Icon(
+                                      isPending
+                                          ? Icons.cancel_outlined
+                                          : Icons.delete_outline,
+                                      color: Colors.red,
+                                      size: 20,
+                                    ),
                                   ),
                                 ],
                               ),

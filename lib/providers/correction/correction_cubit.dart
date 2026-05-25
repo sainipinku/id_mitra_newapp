@@ -933,6 +933,16 @@ class CorrectionCubit extends Cubit<CorrectionState> {
   }) async {
     emit(state.copyWith(columnsLoading: true));
 
+    // ── Offline: load from local DB cache ──
+    if (!await _hasInternet()) {
+      final cached = await _localDS.getDownloadColumns(schoolId);
+      emit(state.copyWith(
+        columnsLoading: false,
+        downloadColumns: cached.isNotEmpty ? cached : state.downloadColumns,
+      ));
+      return;
+    }
+
     try {
       String url = '${Config.baseUrl}auth/school/$schoolId/form-fields';
 
@@ -945,7 +955,11 @@ class CorrectionCubit extends Cubit<CorrectionState> {
       }
 
       if (response == null) {
-        emit(state.copyWith(columnsLoading: false));
+        final cached = await _localDS.getDownloadColumns(schoolId);
+        emit(state.copyWith(
+          columnsLoading: false,
+          downloadColumns: cached.isNotEmpty ? cached : state.downloadColumns,
+        ));
         return;
       }
 
@@ -965,20 +979,27 @@ class CorrectionCubit extends Cubit<CorrectionState> {
 
       final columns = rawFields
           .where((e) => e['name'] != null && e['label'] != null)
-          .map(
-            (e) => DownloadColumn(
-          key: e['name'].toString(),
-          label: e['label'].toString(),
-        ),
-      )
+          .map((e) => DownloadColumn(
+                key: e['name'].toString(),
+                label: e['label'].toString(),
+              ))
           .toList();
+
+      // ── Cache to local DB for offline use ──
+      if (columns.isNotEmpty) {
+        await _localDS.saveDownloadColumns(schoolId, columns);
+      }
 
       emit(state.copyWith(
         columnsLoading: false,
         downloadColumns: columns,
       ));
     } catch (e) {
-      emit(state.copyWith(columnsLoading: false));
+      final cached = await _localDS.getDownloadColumns(schoolId);
+      emit(state.copyWith(
+        columnsLoading: false,
+        downloadColumns: cached.isNotEmpty ? cached : state.downloadColumns,
+      ));
     }
   }
 
