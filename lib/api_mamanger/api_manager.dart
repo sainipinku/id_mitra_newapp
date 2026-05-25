@@ -9,8 +9,8 @@ import 'package:idmitra/services/maintenance_service.dart';
 
 
 class ApiManager {
-  /// Checks the response status and triggers maintenance screen if server is down.
-  /// Returns true if the response is a maintenance/server-error status.
+  //Checks the response status and triggers maintenance screen if server is down.
+  // Returns true if the response is a maintenance/server-error status.
   bool _handleMaintenanceCheck(int statusCode) {
     if (statusCode == 503 || statusCode == 502) {
       MaintenanceService.instance.onServerDown();
