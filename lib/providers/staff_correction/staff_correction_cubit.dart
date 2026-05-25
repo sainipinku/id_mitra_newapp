@@ -8,11 +8,14 @@ import 'package:http/http.dart' as http;
 import 'package:idmitra/api_mamanger/api_manager.dart';
 import 'package:idmitra/api_mamanger/config.dart';
 import 'package:idmitra/api_mamanger/secure_storage.dart';
+import 'package:idmitra/api_mamanger/UserLocal.dart';
 import 'package:idmitra/local_db/staff_correction_local_ds.dart';
 import 'package:idmitra/local_db/correction_local_ds/correction_local_ds.dart';
 import 'package:idmitra/local_db/staff_local_ds/staff_local_ds.dart';
 import 'package:idmitra/local_db/order_local_ds/order_local_ds.dart';
 import 'package:idmitra/db_helper.dart';
+import 'package:idmitra/providers/correction/correction_state.dart';
+import 'package:idmitra/utils/pdf_helper.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'staff_correction_state.dart';
 
@@ -532,6 +535,18 @@ class StaffCorrectionCubit extends Cubit<StaffCorrectionState> {
   Future<void> fetchStaffDownloadColumns({required String schoolId}) async {
     emit(state.copyWith(columnsLoading: true));
     try {
+      // Offline: load from local DB cache
+      if (!await _hasInternet()) {
+        final cached = await _correctionLocalDS.getDownloadColumns('staff_$schoolId');
+        emit(state.copyWith(
+          columnsLoading: false,
+          downloadColumns: cached.isNotEmpty
+              ? cached.map((e) => StaffDownloadColumn(key: e.key, label: e.label)).toList()
+              : state.downloadColumns,
+        ));
+        return;
+      }
+
       final url = '${Config.baseUrl}auth/school/$schoolId/form-fields/staff';
       var response = await _api.getRequest(url);
 
@@ -577,6 +592,14 @@ class StaffCorrectionCubit extends Cubit<StaffCorrectionState> {
       ))
           .toList();
 
+      // Cache to local DB for offline use
+      if (columns.isNotEmpty) {
+        await _correctionLocalDS.saveDownloadColumns(
+          'staff_$schoolId',
+          columns.map((e) => DownloadColumn(key: e.key, label: e.label)).toList(),
+        );
+      }
+
       emit(state.copyWith(columnsLoading: false, downloadColumns: columns));
     } catch (e) {
       emit(state.copyWith(columnsLoading: false));
@@ -589,6 +612,24 @@ class StaffCorrectionCubit extends Cubit<StaffCorrectionState> {
     required List<String> selected,
   }) async {
     try {
+      // Offline: generate PDF locally from cached state
+      if (!await _hasInternet()) {
+        await _correctionLocalDS.savePendingDownload(
+          schoolId: schoolId,
+          listType: 'staff',
+          selectedColumns: selected,
+        );
+        final school = await UserLocal.getSchool();
+        final schoolName = school['schoolName'] ?? 'School';
+        final pdfBytes = await PdfHelper.generateStaffCorrectionChecklist(
+          schoolName: schoolName,
+          items: state.items,
+          selectedColumnKeys: selected,
+          allColumns: state.downloadColumns,
+        );
+        return pdfBytes;
+      }
+
       final url = '${Config.baseUrl}auth/school/$schoolId/staff/correction-lists/download';
       final body = <String, dynamic>{
         'ids': ids,
