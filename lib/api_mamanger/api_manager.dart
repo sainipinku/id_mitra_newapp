@@ -7,7 +7,6 @@ import 'package:idmitra/api_mamanger/ApiResult.dart';
 import 'package:idmitra/api_mamanger/secure_storage.dart';
 import 'package:idmitra/services/maintenance_service.dart';
 
-
 class ApiManager {
   /// Checks the response status and triggers maintenance screen if server is down.
   /// Returns true if the response is a maintenance/server-error status.
@@ -33,7 +32,9 @@ class ApiManager {
           "Content-Type": "application/json",
         },
       );
-      print('status code-----${response.statusCode} and base url----${url} and token-------$token');
+      print(
+        'status code-----${response.statusCode} and base url----${url} and token-------$token',
+      );
       if (_handleMaintenanceCheck(response.statusCode)) return null;
       if (response.statusCode == 201 ||
           response.statusCode == 200 ||
@@ -118,7 +119,9 @@ class ApiManager {
         return null;
       }
     } on SocketException catch (e) {
-      print('patchRequestWithBody SocketException: No internet connection - $e');
+      print(
+        'patchRequestWithBody SocketException: No internet connection - $e',
+      );
       return null;
     } catch (e) {
       print('patchRequestWithBody error: $e');
@@ -145,7 +148,11 @@ Response: ${response.body}
 """);
       var jsonResponse = json.decode(response.body);
       if (_handleMaintenanceCheck(response.statusCode)) {
-        return ApiResult(status: false, statusCode: response.statusCode, message: "Server maintenance");
+        return ApiResult(
+          status: false,
+          statusCode: response.statusCode,
+          message: "Server maintenance",
+        );
       }
       if (response.statusCode == 201 ||
           response.statusCode == 200 ||
@@ -169,7 +176,11 @@ Response: ${response.body}
       }
     } on SocketException catch (e) {
       print('deleteRequest SocketException: No internet connection - $e');
-      return ApiResult(status: false, statusCode: 0, message: "No internet connection");
+      return ApiResult(
+        status: false,
+        statusCode: 0,
+        message: "No internet connection",
+      );
     } catch (e) {
       print('deleteRequest error: $e');
       return ApiResult(status: false, statusCode: 0, message: e.toString());
@@ -279,7 +290,10 @@ Response: ${response.body}
           response.statusCode == 401 ||
           response.statusCode == 403 ||
           response.statusCode == 201 ||
-          response.statusCode == 400 || response.statusCode == 404 || response.statusCode == 422 || response.statusCode == 500) {
+          response.statusCode == 400 ||
+          response.statusCode == 404 ||
+          response.statusCode == 422 ||
+          response.statusCode == 500) {
         return response;
       } else {
         return null;
@@ -337,13 +351,12 @@ Response: ${response.body}
       return null;
     }
   }
+
   multiRequestRoute(image, String url) async {
     final request = http.MultipartRequest('POST', Uri.parse(url));
 
     if (image != null) {
-      request.files.add(
-        await http.MultipartFile.fromPath('image', image),
-      );
+      request.files.add(await http.MultipartFile.fromPath('image', image));
     }
 
     // request.fields['user_name'] = userName;
@@ -363,8 +376,6 @@ Response: ${response.body}
       return http.Response('Error sending request', 500);
     }
   }
-
-
 
   leadsMultiRequestRoute(image, String url) async {
     final request = http.MultipartRequest('POST', Uri.parse(url));
@@ -425,10 +436,7 @@ Response: ${response.body}
       /// Images List
       if (images != null) {
         request.files.add(
-          await http.MultipartFile.fromPath(
-            'profile_photo',
-            images.path,
-          ),
+          await http.MultipartFile.fromPath('profile_photo', images.path),
         );
       }
 
@@ -525,16 +533,16 @@ Response: ${response.body}
   }
 
   registerComplainFormRequest(
-      String categoryType,
-      String type,
-      String subject,
-      String description,
-      String blockId,
-      String unitId,
-      String priorityId,
-      List<File> documentFiles,
-      url,
-      ) async {
+    String categoryType,
+    String type,
+    String subject,
+    String description,
+    String blockId,
+    String unitId,
+    String priorityId,
+    List<File> documentFiles,
+    url,
+  ) async {
     final request = http.MultipartRequest('POST', Uri.parse(url));
 
     if (documentFiles.isNotEmpty) {
@@ -573,10 +581,10 @@ Response: ${response.body}
   }
 
   uploadIncomingDocument(
-      String documentId,
-      List<File> documentFiles,
-      url,
-      ) async {
+    String documentId,
+    List<File> documentFiles,
+    url,
+  ) async {
     final request = http.MultipartRequest('POST', Uri.parse(url));
 
     if (documentFiles.isNotEmpty) {
@@ -602,7 +610,6 @@ Response: ${response.body}
 
       return http.Response.fromStream(response);
     } catch (error) {
-
       return http.Response('Error sending request', 500);
     }
   }
