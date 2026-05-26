@@ -162,7 +162,7 @@ class DBHelper {
           try {
             await db.execute('SELECT 1 FROM students LIMIT 1');
           } catch (_) {
-            // Table doesn't exist — create it now with correct schema
+            // Table doesn't exist or is unreadable — create it now with correct schema
             await db.execute('''
             CREATE TABLE IF NOT EXISTS students (
               id INTEGER PRIMARY KEY,
@@ -200,10 +200,23 @@ class DBHelper {
               updated_at TEXT
             )
             ''');
-            await db.execute('CREATE INDEX IF NOT EXISTS idx_class_section ON students(school_class_id, school_class_section_id)');
-            await db.execute('CREATE INDEX IF NOT EXISTS idx_name ON students(name)');
-            await db.execute('CREATE INDEX IF NOT EXISTS idx_students_uuid ON students(uuid)');
-            await db.execute('CREATE INDEX IF NOT EXISTS idx_students_updated_at ON students(updated_at)');
+            // If the table pre-existed without updated_at (IF NOT EXISTS skipped creation),
+            // ensure the column exists before creating the index.
+            try {
+              await db.execute('ALTER TABLE students ADD COLUMN updated_at TEXT');
+            } catch (_) {}
+            try {
+              await db.execute('CREATE INDEX IF NOT EXISTS idx_class_section ON students(school_class_id, school_class_section_id)');
+            } catch (_) {}
+            try {
+              await db.execute('CREATE INDEX IF NOT EXISTS idx_name ON students(name)');
+            } catch (_) {}
+            try {
+              await db.execute('CREATE INDEX IF NOT EXISTS idx_students_uuid ON students(uuid)');
+            } catch (_) {}
+            try {
+              await db.execute('CREATE INDEX IF NOT EXISTS idx_students_updated_at ON students(updated_at)');
+            } catch (_) {}
           }
         }
 

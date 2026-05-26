@@ -1253,6 +1253,10 @@ class _AddStudentFormPageState extends State<AddStudentFormPage>
         key: _formKey,
         child: Column(
           children: [
+
+            /// =========================
+            /// MAIN INFORMATION
+            /// =========================
             _sectionCard(
               title: 'Main Information',
               child: currentFields.isEmpty
@@ -1272,28 +1276,47 @@ class _AddStudentFormPageState extends State<AddStudentFormPage>
                   : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+
+                  /// MAIN GRID
                   _twoColGrid(currentFields, data),
-                  Builder(builder: (_) {
-                    // Skip if section field is already in currentFields
-                    if (currentFields.any((f) =>
+
+                  /// EDIT MODE SECTION
+                  Builder(
+                    builder: (_) {
+
+                      // Skip if section already exists
+                      if (currentFields.any(
+                            (f) =>
                         f.name == 'class_section' ||
-                        f.name == 'school_class_section_id' ||
-                        f.name == 'section')) {
-                      return const SizedBox.shrink();
-                    }
-                    final w = _editModeSectionWidget(data);
-                    if (w == null) return const SizedBox.shrink();
-                    return w;
-                  }),
+                            f.name == 'school_class_section_id' ||
+                            f.name == 'section',
+                      )) {
+                        return const SizedBox.shrink();
+                      }
+
+                      final w = _editModeSectionWidget(data);
+
+                      if (w == null) {
+                        return const SizedBox.shrink();
+                      }
+
+                      return w;
+                    },
+                  ),
                 ],
               ),
             ),
+
+            // if (additionalFields.isNotEmpty)
+            //   _additionalCollapsible(
+            //     additionalFields,
+            //     data,
+            //   ),
           ],
         ),
       ),
     );
   }
-
   bool _additionalExpanded = false;
 
   Widget _additionalCollapsible(

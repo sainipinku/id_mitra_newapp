@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:idmitra/Widgets/shimmer_loader.dart';
@@ -52,6 +54,8 @@ class _StaffDashboardState extends State<StaffDashboard> {
   bool _userLoaded = false;
   final StudentsCubit _studentsCubit = StudentsCubit();
   final StaffCubit _staffCubit = StaffCubit();
+  StreamSubscription? _connectivitySubscription;
+  bool _isSyncing = false;
 
   // Cached widgets — rebuilt only when schoolId or key data changes
   List<Widget>? _cachedWidgets;
@@ -97,6 +101,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
 
   @override
   void dispose() {
+    _connectivitySubscription?.cancel();
     _studentsCubit.close();
     _staffCubit.close();
     super.dispose();
@@ -143,6 +148,14 @@ class _StaffDashboardState extends State<StaffDashboard> {
   void initState() {
     super.initState();
     _loadUser();
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) async {
+      final hasInternet = !results.contains(ConnectivityResult.none);
+      if (!hasInternet) return;
+      if (_isSyncing) return;
+      _isSyncing = true;
+      await _loadUser();
+      _isSyncing = false;
+    });
   }
 
   Future<void> _loadUser() async {
@@ -436,10 +449,10 @@ class _StaffDashboardState extends State<StaffDashboard> {
             CircleAvatar(
               radius: 20,
               backgroundColor: const Color(0xFFE0E0E0),
-              backgroundImage: _profileImage.isNotEmpty
+              backgroundImage: _profileImage.isNotEmpty && !_profileImage.contains('ui-avatars.com')
                   ? NetworkImage(_profileImage)
                   : null,
-              child: _profileImage.isEmpty
+              child: _profileImage.isEmpty || _profileImage.contains('ui-avatars.com')
                   ? const Icon(Icons.person, color: Colors.grey)
                   : null,
             ),

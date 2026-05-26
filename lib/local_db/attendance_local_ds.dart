@@ -60,50 +60,65 @@ class AttendanceLocalDS {
     required int classId,
     required String date,
   }) async {
-    final db = await DBHelper.db;
-    final rows = await db.query(
-      'attendance_cache',
-      where: 'school_id = ? AND class_id = ? AND date = ?',
-      whereArgs: [schoolId, classId, date],
-    );
-    if (rows.isEmpty) return null;
-    final row = rows.first;
-    final classesJson =
-        jsonDecode(row['classes_json'] as String) as List;
-    final studentsJson =
-        jsonDecode(row['students_json'] as String) as List;
-    final statsJson =
-        jsonDecode(row['stats_json'] as String) as Map<String, dynamic>;
-    return {
-      'classes': classesJson
-          .map((e) =>
-              AttendanceClassItem.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      'students': studentsJson
-          .map((e) =>
-              AttendanceStudent.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      'stats': AttendanceStats.fromJson(statsJson),
-    };
+    try {
+      final db = await DBHelper.db;
+      final rows = await db.query(
+        'attendance_cache',
+        where: 'school_id = ? AND class_id = ? AND date = ?',
+        whereArgs: [schoolId, classId, date],
+      );
+      if (rows.isEmpty) return null;
+      final row = rows.first;
+      final classesJson =
+          jsonDecode(row['classes_json'] as String? ?? '[]') as List;
+      final studentsJson =
+          jsonDecode(row['students_json'] as String? ?? '[]') as List;
+      final statsJson =
+          jsonDecode(row['stats_json'] as String? ?? '{}') as Map<String, dynamic>;
+      return {
+        'classes': classesJson
+            .map((e) =>
+                AttendanceClassItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        'students': studentsJson
+            .map((e) =>
+                AttendanceStudent.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        'stats': AttendanceStats.fromJson(statsJson),
+      };
+    } catch (e) {
+      // Corrupted cache — delete and return null so fresh fetch happens
+      try {
+        final db = await DBHelper.db;
+        await db.delete('attendance_cache',
+            where: 'school_id = ? AND class_id = ? AND date = ?',
+            whereArgs: [schoolId, classId, date]);
+      } catch (_) {}
+      return null;
+    }
   }
 
   /// Returns the classes list from the most-recently cached attendance entry for this school.
   Future<List<AttendanceClassItem>> getClasses(String schoolId) async {
-    final db = await DBHelper.db;
-    final rows = await db.query(
-      'attendance_cache',
-      where: 'school_id = ?',
-      whereArgs: [schoolId],
-      orderBy: 'updated_at DESC',
-      limit: 1,
-    );
-    if (rows.isEmpty) return [];
-    final classesJson =
-        jsonDecode(rows.first['classes_json'] as String) as List;
-    return classesJson
-        .map((e) =>
-            AttendanceClassItem.fromJson(e as Map<String, dynamic>))
-        .toList();
+    try {
+      final db = await DBHelper.db;
+      final rows = await db.query(
+        'attendance_cache',
+        where: 'school_id = ?',
+        whereArgs: [schoolId],
+        orderBy: 'updated_at DESC',
+        limit: 1,
+      );
+      if (rows.isEmpty) return [];
+      final classesJson =
+          jsonDecode(rows.first['classes_json'] as String? ?? '[]') as List;
+      return classesJson
+          .map((e) =>
+              AttendanceClassItem.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<void> updateCachedStudentStatus({

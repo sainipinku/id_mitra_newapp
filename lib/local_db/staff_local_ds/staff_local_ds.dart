@@ -200,6 +200,16 @@ class StaffLocalDS {
     await db.delete('staff', where: 'school_id = ?', whereArgs: [schoolId]);
   }
 
+  /// Sirf synced (non-pending) staff records delete karo — pending wale safe rehte hain
+  Future<void> clearSyncedStaff(String schoolId) async {
+    final db = await DBHelper.db;
+    await db.delete(
+      'staff',
+      where: 'school_id = ? AND is_offline = 0 AND is_offline_update = 0 AND is_extra_pending_sync = 0 AND is_delete_pending_sync = 0 AND is_status_pending_sync = 0 AND is_photo_pending_sync = 0 AND is_extra = 0',
+      whereArgs: [int.tryParse(schoolId) ?? 0],
+    );
+  }
+
   Future<StaffListModel?> getStaffByUuid(String uuid) async {
     final db = await DBHelper.db;
     final data = await db.query(

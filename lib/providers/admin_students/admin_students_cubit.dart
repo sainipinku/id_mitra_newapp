@@ -45,7 +45,7 @@ class AdminStudentsCubit extends Cubit<AdminStudentsState> {
     final jsonData = jsonDecode(response.body);
     final List list = jsonData["data"]?["data"] ?? [];
     final newList = list.map((e) => StudentDetailsData.fromJson(e)).toList();
-    final total = jsonData["data"]["total"] ?? 0;
+    final total = jsonData["data"]?["total"] ?? 0;
 
     final updatedList = isLoadMore
         ? [...state.studentsList, ...newList]

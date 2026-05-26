@@ -258,6 +258,11 @@ class StudentsCubit extends Cubit<StudentsState> {
 
       List<StudentDetailsData> newList = list.map((e) => StudentDetailsData.fromJson(e)).toList();
 
+      // Page-1 unfiltered fresh fetch: stale (server-deleted) records clean karo
+      if (!isLoadMore && currentPage == 1 && search.isEmpty && usedClassId.isEmpty && usedGender.isEmpty && usedSectionIds.isEmpty) {
+        await localDS.clearStudents(schoolId: effectiveSchoolId ?? "");
+      }
+
       // API data local DB mein save karo
       await localDS.insertStudents(newList);
 
@@ -933,10 +938,15 @@ class StudentsCubit extends Cubit<StudentsState> {
       // Online: Direct upload
       try {
         File fixedImage = await FlutterExifRotation.rotateImage(path: path);
+        print("=== IMAGE UPLOAD URL: $fixedImage ===");
+
         var response = await apiManager.multiRequestRoute(
           fixedImage.path,
           Config.baseUrl + Routes.updateStudentProfile(student.uuid ?? ''),
         );
+        print("IMAGE UPLOAD RESPONSE STATUS: ${response.statusCode} ===");
+        print("IMAGE UPLOAD RESPONSE BODY: ${response.body} ===");
+        debugPrint("uploadStudentImage status: ${response.statusCode}, body: ${response.body}");
 
         if (response.statusCode == 200) {
           final jsonData = jsonDecode(response.body);
@@ -1238,4 +1248,3 @@ class StudentsCubit extends Cubit<StudentsState> {
     };
   }
 }
-

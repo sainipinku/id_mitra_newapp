@@ -107,13 +107,13 @@ class SchoolCubit extends Cubit<SchoolState> {
           ));
           print('SchoolCubit: loaded ${parsed.length} schools from local DB');
 
-          // Step 2: Background sync — update silently
+          // Step 2: Background sync — silently update cache then refresh UI
           _syncFromApi(
             page: 1,
             search: search,
             isCacheable: true,
             isLoadMore: false,
-            emitStates: false,
+            emitStates: true,
           );
           return;
         }

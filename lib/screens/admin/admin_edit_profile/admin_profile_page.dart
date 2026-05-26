@@ -73,10 +73,12 @@ class _ProfileHeader extends StatelessWidget {
               CircleAvatar(
                 radius: 55,
                 backgroundColor: const Color(0xFFE0E0E0),
-                backgroundImage: (user?.profilePhotoUrl.isNotEmpty == true)
+                backgroundImage: (user?.profilePhotoUrl.isNotEmpty == true &&
+                        !(user?.profilePhotoUrl.contains('ui-avatars.com') ?? false))
                     ? NetworkImage(user!.profilePhotoUrl)
                     : null,
-                child: (user?.profilePhotoUrl.isEmpty ?? true)
+                child: ((user?.profilePhotoUrl.isEmpty ?? true) ||
+                        (user?.profilePhotoUrl.contains('ui-avatars.com') ?? false))
                     ? const Icon(Icons.person, size: 50, color: Colors.grey)
                     : null,
               ),

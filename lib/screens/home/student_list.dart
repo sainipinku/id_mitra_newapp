@@ -89,6 +89,9 @@ class _StudentListingPageState extends State<StudentListingPage>
 
     return MultiBlocProvider(
       providers: [
+        BlocProvider<StudentsCubit>(
+          create: (_) => StudentsCubit(),
+        ),
         BlocProvider(
           create: (_) => CorrectionCubit()
             ..fetchCorrectionStudents(schoolId: widget.schoolId),
@@ -253,6 +256,116 @@ class _CountBanner extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
+// SELECTION TOOLBAR  (shared across all 3 tabs)
+// ─────────────────────────────────────────────────────────────
+
+class _SelectionToolbar extends StatelessWidget {
+  final int selectedCount;
+  final VoidCallback onSelectAll;
+  final VoidCallback onClear;
+  final String actionLabel;
+  final IconData? actionIcon;
+  final VoidCallback? onAction;
+  final bool actionLoading;
+
+  const _SelectionToolbar({
+    required this.selectedCount,
+    required this.onSelectAll,
+    required this.onClear,
+    required this.actionLabel,
+    this.actionIcon,
+    this.onAction,
+    this.actionLoading = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppTheme.btnColor.withOpacity(0.07),
+        border: Border(
+          left: BorderSide(color: AppTheme.btnColor, width: 3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: AppTheme.btnColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '$selectedCount',
+              style: MyStyles.boldText(size: 11, color: Colors.white),
+            ),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            'selected',
+            style: MyStyles.regularText(size: 12, color: AppTheme.btnColor),
+          ),
+          const SizedBox(width: 8),
+          Container(width: 1, height: 14, color: Colors.grey.shade300),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onSelectAll,
+            child: Text(
+              'Select All',
+              style: MyStyles.mediumText(size: 12, color: AppTheme.btnColor),
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: onClear,
+            child: Text(
+              'Clear',
+              style: MyStyles.mediumText(
+                  size: 12, color: AppTheme.graySubTitleColor),
+            ),
+          ),
+          const Spacer(),
+          actionLoading
+              ? const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+                strokeWidth: 2, color: AppTheme.btnColor),
+          )
+              : GestureDetector(
+            onTap: onAction,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppTheme.btnColor,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (actionIcon != null) ...[
+                    Icon(actionIcon, size: 12, color: Colors.white),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(
+                    actionLabel,
+                    style: MyStyles.mediumText(
+                        size: 11, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // STUDENTS TAB
 // ─────────────────────────────────────────────────────────────
 
@@ -371,13 +484,10 @@ class _StudentsTabState extends State<_StudentsTab> {
     super.initState();
     final cubit = context.read<StudentsCubit>();
 
-    //  Sync offline students first (Doc 5)
+    //  Sync offline students first
     cubit.syncOfflineStudents(schoolId: widget.schoolId);
 
-    //  Background full sync (Doc 5)
-    cubit.syncAllStudents(schoolId: widget.schoolId);
-
-    //  Initial fetch with schoolId (Doc 6)
+    //  Initial fetch with schoolId
     cubit.fetchStudents(search: '', schoolId: widget.schoolId);
 
     // imageShape fetch (Doc 6)
@@ -406,6 +516,7 @@ class _StudentsTabState extends State<_StudentsTab> {
 
   void _fetchMore() {
     final state = context.read<StudentsCubit>().state;
+    if (state.loading || state.isPaginationLoading || !state.hasMore) return;
     context.read<StudentsCubit>().fetchStudents(
       isLoadMore: true,
       search: _searchCtrl.text.trim(),
@@ -458,55 +569,6 @@ class _StudentsTabState extends State<_StudentsTab> {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    // Selection toolbar
-                    if (_selectedIds.isNotEmpty)
-                      BlocBuilder<StudentsCubit, StudentsState>(
-                        builder: (_, studState) => Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: AppTheme.btnColor.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Row(
-                            children: [
-                              TextButton(
-                                onPressed: () =>
-                                    _selectAll(studState.studentsList),
-                                child: Text('Select All',
-                                    style: MyStyles.mediumText(
-                                        size: 12,
-                                        color: AppTheme.btnColor)),
-                              ),
-                              TextButton(
-                                onPressed: _clearSelection,
-                                child: Text('Clear',
-                                    style: MyStyles.mediumText(
-                                        size: 12, color: Colors.grey)),
-                              ),
-                              const SizedBox(width: 4),
-                              GestureDetector(
-                                onTap: () =>
-                                    _showProcessChecklistDialog(context),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 7),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.btnColor,
-                                    borderRadius:
-                                    BorderRadius.circular(20),
-                                  ),
-                                  child: Text('Process Checklist',
-                                      style: MyStyles.mediumText(
-                                          size: 12, color: Colors.white)),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-
                     // Search + Filter row
                     Row(
                       children: [
@@ -569,7 +631,24 @@ class _StudentsTabState extends State<_StudentsTab> {
                       ],
                     ),
 
-                    const SizedBox(height: 15),
+                    // Selection toolbar — shown below search bar
+                    if (_selectedIds.isNotEmpty)
+                      BlocBuilder<StudentsCubit, StudentsState>(
+                        builder: (_, studState) => Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: _SelectionToolbar(
+                            selectedCount: _selectedIds.length,
+                            onSelectAll: () =>
+                                _selectAll(studState.studentsList),
+                            onClear: _clearSelection,
+                            actionLabel: 'Process Checklist',
+                            onAction: () =>
+                                _showProcessChecklistDialog(context),
+                          ),
+                        ),
+                      ),
+
+                    const SizedBox(height: 8),
 
                     Expanded(
                       child: BlocBuilder<StudentsCubit, StudentsState>(
@@ -800,6 +879,13 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
     super.dispose();
   }
 
+  Future<void> _refresh() async {
+    _searchCtrl.clear();
+    context.read<CorrectionCubit>().fetchCorrectionStudents(
+      schoolId: widget.schoolId,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -819,9 +905,13 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
             p.sendOrderSuccess != c.sendOrderSuccess ||
             p.sendOrderError != c.sendOrderError ||
             p.createOrderSuccess != c.createOrderSuccess ||
-            p.createOrderError != c.createOrderError,
+            p.createOrderError != c.createOrderError ||
+            p.syncSuccess != c.syncSuccess,
         listener: (context, state) async {
           if (state.syncSuccess) {
+            context.read<CorrectionCubit>().fetchCorrectionStudents(
+              schoolId: widget.schoolId,
+            );
             widget.ordersCubit?.fetchSchoolOrders(
               schoolId: widget.schoolId,
             );
@@ -1004,34 +1094,53 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
                   }
 
                   if (state.studentsLoading && state.students.isEmpty) {
-                    return const ShimmerList(expanded: false);
+                    return RefreshIndicator(
+                      color: AppTheme.btnColor,
+                      onRefresh: _refresh,
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        child: const ShimmerList(expanded: false),
+                      ),
+                    );
                   }
                   if (state.studentsError != null &&
                       state.students.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
+                    return RefreshIndicator(
+                      color: AppTheme.btnColor,
+                      onRefresh: _refresh,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
                         children: [
-                          Icon(Icons.error_outline,
-                              size: 48, color: Colors.red.shade300),
-                          const SizedBox(height: 12),
-                          Text(state.studentsError!,
-                              style: MyStyles.regularText(
-                                  size: 14, color: Colors.red)),
-                          const SizedBox(height: 16),
-                          ElevatedButton.icon(
-                            onPressed: () => context
-                                .read<CorrectionCubit>()
-                                .fetchCorrectionStudents(
-                                schoolId: widget.schoolId),
-                            icon: const Icon(Icons.refresh, size: 16),
-                            label: const Text('Retry'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.btnColor,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                  BorderRadius.circular(10)),
+                          SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.6,
+                            child: Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.error_outline,
+                                      size: 48, color: Colors.red.shade300),
+                                  const SizedBox(height: 12),
+                                  Text(state.studentsError!,
+                                      style: MyStyles.regularText(
+                                          size: 14, color: Colors.red)),
+                                  const SizedBox(height: 16),
+                                  ElevatedButton.icon(
+                                    onPressed: () => context
+                                        .read<CorrectionCubit>()
+                                        .fetchCorrectionStudents(
+                                        schoolId: widget.schoolId),
+                                    icon: const Icon(Icons.refresh, size: 16),
+                                    label: const Text('Retry'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppTheme.btnColor,
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                          BorderRadius.circular(10)),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ],
@@ -1039,17 +1148,29 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
                     );
                   }
                   if (state.students.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
+                    return RefreshIndicator(
+                      color: AppTheme.btnColor,
+                      onRefresh: _refresh,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
                         children: [
-                          Image.asset('assets/images/no_data.png',
-                              height: 160),
-                          const SizedBox(height: 12),
-                          Text('No students found',
-                              style: MyStyles.mediumText(
-                                  size: 14,
-                                  color: AppTheme.graySubTitleColor)),
+                          SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.6,
+                            child: Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Image.asset('assets/images/no_data.png',
+                                      height: 160),
+                                  const SizedBox(height: 12),
+                                  Text('No students found',
+                                      style: MyStyles.mediumText(
+                                          size: 14,
+                                          color: AppTheme.graySubTitleColor)),
+                                ],
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     );
@@ -1057,96 +1178,33 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
 
                   return RefreshIndicator(
                     color: AppTheme.btnColor,
-                    onRefresh: () async {
-                      _searchCtrl.clear();
-                      context.read<CorrectionCubit>().fetchCorrectionStudents(
-                        schoolId: widget.schoolId,
-                      );
-                    },
+                    onRefresh: _refresh,
                     child: Column(
                       children: [
                         if (!_isGridView &&
                             state.selectedStudentIds.isNotEmpty)
-                          Container(
-                            color: AppTheme.btnColor.withOpacity(0.08),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 10),
-                            child: Row(
-                              children: [
-                                Text(
-                                  '${state.selectedStudentIds.length} selected',
-                                  style: MyStyles.mediumText(
-                                      size: 13,
-                                      color: AppTheme.btnColor),
-                                ),
-                                const Spacer(),
-                                TextButton(
-                                  onPressed: () => context
-                                      .read<CorrectionCubit>()
-                                      .selectAllStudents(),
-                                  child: Text('Select All',
-                                      style: MyStyles.mediumText(
-                                          size: 12,
-                                          color: AppTheme.btnColor)),
-                                ),
-                                TextButton(
-                                  onPressed: () => context
-                                      .read<CorrectionCubit>()
-                                      .clearStudentSelection(),
-                                  child: Text('Clear',
-                                      style: MyStyles.mediumText(
-                                          size: 12,
-                                          color: Colors.grey)),
-                                ),
-                                const SizedBox(width: 4),
-                                state.sendOrderLoading
-                                    ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: AppTheme.btnColor),
-                                )
-                                    : GestureDetector(
-                                  onTap: () =>
-                                      _showCreateOrderDialog(
-                                          context),
-                                  child: Container(
-                                    padding: const EdgeInsets
-                                        .symmetric(
-                                        horizontal: 14,
-                                        vertical: 7),
-                                    decoration: BoxDecoration(
-                                        color: AppTheme.btnColor,
-                                        borderRadius:
-                                        BorderRadius.circular(
-                                            20)),
-                                    child: Row(
-                                      mainAxisSize:
-                                      MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                            Icons.send_rounded,
-                                            size: 13,
-                                            color: Colors.white),
-                                        const SizedBox(width: 5),
-                                        Text('Create Order',
-                                            style:
-                                            MyStyles.mediumText(
-                                                size: 12,
-                                                color: Colors
-                                                    .white)),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
+                          _SelectionToolbar(
+                            selectedCount:
+                            state.selectedStudentIds.length,
+                            onSelectAll: () => context
+                                .read<CorrectionCubit>()
+                                .selectAllStudents(),
+                            onClear: () => context
+                                .read<CorrectionCubit>()
+                                .clearStudentSelection(),
+                            actionLabel: 'Create Order',
+                            actionIcon: Icons.send_rounded,
+                            actionLoading: state.sendOrderLoading,
+                            onAction: state.sendOrderLoading
+                                ? null
+                                : () =>
+                                _showCreateOrderDialog(context),
                           ),
                         Expanded(
                           child: _isGridView
                               ? ListView.builder(
                             controller: _scrollCtrl,
+                            physics: const AlwaysScrollableScrollPhysics(),
                             padding: const EdgeInsets.fromLTRB(
                                 16, 4, 16, 80),
                             itemCount: state.students.length +
@@ -1190,6 +1248,7 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
                           )
                               : ListView.builder(
                             controller: _scrollCtrl,
+                            physics: const AlwaysScrollableScrollPhysics(),
                             padding: const EdgeInsets.fromLTRB(
                                 16, 4, 16, 20),
                             itemCount: state.students.length +
@@ -1446,10 +1505,15 @@ class _CorrectionCardState extends State<_CorrectionCard> {
         fixed.path,
         Config.baseUrl + Routes.updateStudentProfile(uuid),
       );
-      if (response.statusCode == 200) {
+      debugPrint("_uploadImage status: ${response.statusCode}, body: ${response.body}");
+      if (response.statusCode == 200 || response.statusCode == 201) {
         final json = jsonDecode(response.body);
-        setState(
-                () => _currentPhotoUrl = json['data']['profile_photo_url']);
+        final newUrl = json['data']?['profile_photo_url'] as String?;
+        if (newUrl != null) {
+          setState(() => _currentPhotoUrl = newUrl);
+        }
+      } else {
+        debugPrint("Upload failed: ${response.statusCode} ${response.body}");
       }
     } catch (e) {
       debugPrint("Upload error: $e");
@@ -1644,7 +1708,7 @@ class _CorrectionCardState extends State<_CorrectionCard> {
   }
 
   Widget _buildPhoto(String photoUrl) {
-    final shape = widget.imageShape ?? 'rectangle';
+    const shape = 'rectangle';
     Widget content;
     if (_isUploading) {
       content = const SizedBox(
@@ -1656,11 +1720,13 @@ class _CorrectionCardState extends State<_CorrectionCard> {
       if (photoUrl.startsWith('/') || photoUrl.startsWith('file://')) {
         content = Image.file(File(photoUrl),
             height: 60, width: 60, fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
             errorBuilder: (_, __, ___) => _placeholder());
       } else {
         content = CachedNetworkImage(
             imageUrl: photoUrl,
             height: 60, width: 60, fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
             errorWidget: (_, __, ___) => _placeholder(),
             placeholder: (_, __) => _placeholder());
       }
@@ -1704,14 +1770,10 @@ class _CorrectionCardState extends State<_CorrectionCard> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: widget.isSelected
-            ? AppTheme.btnColor.withOpacity(0.06)
-            : Colors.white,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: widget.isSelected
-              ? AppTheme.btnColor
-              : Colors.transparent,
+          color: Colors.transparent,
           width: 1.5,
         ),
       ),
@@ -2279,56 +2341,24 @@ class _OrdersTabState extends State<_OrdersTab> {
                 child: Column(
                   children: [
                     if (state.selectedOrderUuids.isNotEmpty)
-                      Container(
-                        color: AppTheme.btnColor.withOpacity(0.08),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        child: Row(
-                          children: [
-                            Text(
-                              '${state.selectedOrderUuids.length} selected',
-                              style: MyStyles.mediumText(
-                                  size: 13, color: AppTheme.btnColor),
-                            ),
-                            const Spacer(),
-                            GestureDetector(
-                              onTap: () => context
-                                  .read<OrdersCubit>()
-                                  .selectAllOrders(),
-                              child: Text('Select All',
-                                  style: MyStyles.mediumText(
-                                      size: 12,
-                                      color: AppTheme.btnColor)),
-                            ),
-                            const SizedBox(width: 12),
-                            GestureDetector(
-                              onTap: () => context
-                                  .read<OrdersCubit>()
-                                  .clearOrderSelection(),
-                              child: Text('Clear',
-                                  style: MyStyles.mediumText(
-                                      size: 12,
-                                      color: AppTheme.cancelTextColor)),
-                            ),
-                            const SizedBox(width: 12),
-                            GestureDetector(
-                              onTap: () => _showChangeStatusDialog(
-                                context,
-                                state.selectedOrderUuids.toList(),
-                              ),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.btnColor,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text('Change Status',
-                                    style: MyStyles.mediumText(
-                                        size: 11, color: Colors.white)),
-                              ),
-                            ),
-                          ],
+                      _SelectionToolbar(
+                        selectedCount:
+                        state.selectedOrderUuids.length,
+                        onSelectAll: () => context
+                            .read<OrdersCubit>()
+                            .selectAllOrders(),
+                        onClear: () => context
+                            .read<OrdersCubit>()
+                            .clearOrderSelection(),
+                        actionLabel: 'Change Status',
+                        onAction: () => _showChangeStatusDialog(
+                          context,
+                          // map selected IDs back to real UUIDs for the API
+                          state.ordersList
+                              .where((o) => state.selectedOrderUuids
+                              .contains(o.id.toString()))
+                              .map((o) => o.uuid)
+                              .toList(),
                         ),
                       ),
                     Expanded(
@@ -2341,15 +2371,18 @@ class _OrdersTabState extends State<_OrdersTab> {
                         itemBuilder: (_, i) {
                           if (i < state.ordersList.length) {
                             final order = state.ordersList[i];
+                            // use id-based key so empty/duplicate UUIDs
+                            // don't cause the whole list to appear selected
                             final isSelected = state.selectedOrderUuids
-                                .contains(order.uuid);
+                                .contains(order.id.toString());
                             return _OrderCard(
                               order: order,
                               schoolId: widget.schoolId,
                               isSelected: isSelected,
                               onToggle: () => context
                                   .read<OrdersCubit>()
-                                  .toggleOrderSelection(order.uuid),
+                                  .toggleOrderSelection(
+                                  order.id.toString()),
                             );
                           }
                           return const Padding(
@@ -2626,14 +2659,10 @@ class _OrderCardState extends State<_OrderCard> {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: widget.isSelected
-              ? AppTheme.btnColor.withOpacity(0.06)
-              : Colors.white,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: widget.isSelected
-                ? AppTheme.btnColor
-                : Colors.transparent,
+            color: Colors.transparent,
             width: 1.5,
           ),
         ),
@@ -2670,12 +2699,14 @@ class _OrderCardState extends State<_OrderCard> {
               borderRadius: BorderRadius.circular(6),
               child: (student?.profilePhotoUrl != null &&
                   student!.profilePhotoUrl!.isNotEmpty)
-                  ? Image.network(
-                student.profilePhotoUrl!,
+                  ? CachedNetworkImage(
+                imageUrl: student.profilePhotoUrl!,
                 height: 60,
                 width: 60,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _placeholder(),
+                alignment: Alignment.topCenter,
+                placeholder: (_, __) => _placeholder(),
+                errorWidget: (_, __, ___) => _placeholder(),
               )
                   : _placeholder(),
             ),
@@ -2796,10 +2827,6 @@ class _OrderCardState extends State<_OrderCard> {
     child: const Icon(Icons.person, color: Colors.grey),
   );
 }
-
-// ─────────────────────────────────────────────────────────────
-// DIALOGS
-// ─────────────────────────────────────────────────────────────
 
 class _CreateOrderDialog extends StatefulWidget {
   final String schoolId;
@@ -3695,21 +3722,16 @@ class _ProcessChecklistDialogState
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────
 
 Widget _buildShapedPreview(String imageUrl, String shape) {
-  final imageWidget = Image.network(
-    imageUrl,
+  final imageWidget = CachedNetworkImage(
+    imageUrl: imageUrl,
     width: double.infinity,
     fit: BoxFit.contain,
-    loadingBuilder: (_, child, progress) => progress == null
-        ? child
-        : const SizedBox(
+    placeholder: (_, __) => const SizedBox(
         height: 300,
         child: Center(child: CircularProgressIndicator())),
-    errorBuilder: (_, __, ___) => Container(
+    errorWidget: (_, __, ___) => Container(
       height: 300,
       width: double.infinity,
       color: Colors.grey.shade300,

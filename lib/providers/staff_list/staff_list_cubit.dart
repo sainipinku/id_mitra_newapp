@@ -396,6 +396,11 @@ class StaffListCubit extends Cubit<StaffListState> {
             .map((e) => StaffListModel.fromJson(Map<String, dynamic>.from(e)))
             .toList();
 
+        // Page-1 unfiltered fetch: stale (server-deleted) records clean karo
+        if (!isLoadMore && page == 1 && search.isEmpty) {
+          await localDS.clearSyncedStaff(schoolId);
+        }
+
         // Sync to local DB
         await localDS.insertStaff(newItems);
 
