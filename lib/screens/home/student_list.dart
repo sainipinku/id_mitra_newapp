@@ -641,7 +641,7 @@ class _StudentsTabState extends State<_StudentsTab> {
                             controller: _scrollCtrl,
                             itemCount: itemCount,
                             itemBuilder: (context, index) {
-                              print(jsonEncode("singledata-----${state.studentsList[0].toJson()}"));
+
                               if (index < state.studentsList.length) {
                                 final student = state.studentsList[index];
                                 String? imageShape =
