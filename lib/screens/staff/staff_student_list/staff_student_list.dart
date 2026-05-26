@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -349,6 +350,116 @@ class _StaffStudentsScreenState extends State<StaffStudentsScreen>
 }
 
 // ---------------------------------------------------------------------------
+// Selection Toolbar
+// ---------------------------------------------------------------------------
+
+class _StaffSelectionToolbar extends StatelessWidget {
+  final int selectedCount;
+  final VoidCallback onSelectAll;
+  final VoidCallback onClear;
+  final String actionLabel;
+  final IconData? actionIcon;
+  final VoidCallback? onAction;
+  final bool actionLoading;
+
+  const _StaffSelectionToolbar({
+    required this.selectedCount,
+    required this.onSelectAll,
+    required this.onClear,
+    required this.actionLabel,
+    this.actionIcon,
+    this.onAction,
+    this.actionLoading = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppTheme.btnColor.withOpacity(0.07),
+        border: Border(
+          left: BorderSide(color: AppTheme.btnColor, width: 3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: AppTheme.btnColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '$selectedCount',
+              style: MyStyles.boldText(size: 11, color: Colors.white),
+            ),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            'selected',
+            style: MyStyles.regularText(size: 12, color: AppTheme.btnColor),
+          ),
+          const SizedBox(width: 8),
+          Container(width: 1, height: 14, color: Colors.grey.shade300),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onSelectAll,
+            child: Text(
+              'Select All',
+              style: MyStyles.mediumText(size: 12, color: AppTheme.btnColor),
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: onClear,
+            child: Text(
+              'Clear',
+              style: MyStyles.mediumText(
+                  size: 12, color: AppTheme.graySubTitleColor),
+            ),
+          ),
+          const Spacer(),
+          actionLoading
+              ? const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+                strokeWidth: 2, color: AppTheme.btnColor),
+          )
+              : GestureDetector(
+            onTap: onAction,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppTheme.btnColor,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (actionIcon != null) ...[
+                    Icon(actionIcon, size: 12, color: Colors.white),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(
+                    actionLabel,
+                    style: MyStyles.mediumText(
+                        size: 11, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Count row banner
 // ---------------------------------------------------------------------------
 
@@ -605,55 +716,14 @@ class _StaffStudentsTabState extends State<_StaffStudentsTab> {
                   children: [
                     if (_selectedIds.isNotEmpty)
                       BlocBuilder<StudentsCubit, StudentsState>(
-                        builder: (_, studState) => Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: AppTheme.btnColor.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Row(
-                            children: [
-                              const Spacer(),
-                              TextButton(
-                                onPressed: () =>
-                                    _selectAll(studState.studentsList),
-                                child: Text('Select All',
-                                    style: MyStyles.mediumText(
-                                        size: 12,
-                                        color: AppTheme.btnColor)),
-                              ),
-                              TextButton(
-                                onPressed: _clearSelection,
-                                child: Text('Clear',
-                                    style: MyStyles.mediumText(
-                                        size: 12, color: Colors.grey)),
-                              ),
-                              const SizedBox(width: 4),
-                              GestureDetector(
-                                onTap: () =>
-                                    _showProcessChecklistDialog(context),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 7),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.btnColor,
-                                    borderRadius:
-                                    BorderRadius.circular(20),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text('Process Checklist',
-                                          style: MyStyles.mediumText(
-                                              size: 12,
-                                              color: Colors.white)),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
+                        builder: (_, studState) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: _StaffSelectionToolbar(
+                            selectedCount: _selectedIds.length,
+                            onSelectAll: () => _selectAll(studState.studentsList),
+                            onClear: _clearSelection,
+                            actionLabel: 'Process Checklist',
+                            onAction: () => _showProcessChecklistDialog(context),
                           ),
                         ),
                       ),
@@ -971,8 +1041,14 @@ class _StaffCorrectionTabState extends State<_StaffCorrectionTab> {
       body: BlocListener<CorrectionCubit, CorrectionState>(
         listenWhen: (p, c) =>
         p.sendOrderSuccess != c.sendOrderSuccess ||
-            p.sendOrderError != c.sendOrderError,
+            p.sendOrderError != c.sendOrderError ||
+            p.syncSuccess != c.syncSuccess,
         listener: (context, state) async {
+          if (state.syncSuccess) {
+            context.read<CorrectionCubit>().fetchCorrectionStudents(
+              schoolId: widget.schoolId,
+            );
+          }
           if (state.sendOrderSuccess) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -1219,76 +1295,20 @@ class _StaffCorrectionTabState extends State<_StaffCorrectionTab> {
                       children: [
                         if (!_isGridView &&
                             state.selectedStudentIds.isNotEmpty)
-                          Container(
-                            color: AppTheme.btnColor.withOpacity(0.08),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 10),
-                            child: Row(
-                              children: [
-                                Text(
-                                  '${state.selectedStudentIds.length} selected',
-                                  style: MyStyles.mediumText(
-                                      size: 13, color: AppTheme.btnColor),
-                                ),
-                                const Spacer(),
-                                TextButton(
-                                  onPressed: () => context
-                                      .read<CorrectionCubit>()
-                                      .selectAllStudents(),
-                                  child: Text('Select All',
-                                      style: MyStyles.mediumText(
-                                          size: 12,
-                                          color: AppTheme.btnColor)),
-                                ),
-                                TextButton(
-                                  onPressed: () => context
-                                      .read<CorrectionCubit>()
-                                      .clearStudentSelection(),
-                                  child: Text('Clear',
-                                      style: MyStyles.mediumText(
-                                          size: 12,
-                                          color: Colors.grey)),
-                                ),
-                                const SizedBox(width: 4),
-                                state.sendOrderLoading
-                                    ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: AppTheme.btnColor),
-                                )
-                                    : GestureDetector(
-                                  onTap: () =>
-                                      _showCreateOrderDialog(context),
-                                  child: Container(
-                                    padding:
-                                    const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 7),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.btnColor,
-                                      borderRadius:
-                                      BorderRadius.circular(20),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                            Icons.send_rounded,
-                                            size: 13,
-                                            color: Colors.white),
-                                        const SizedBox(width: 5),
-                                        Text('Create order',
-                                            style: MyStyles.mediumText(
-                                                size: 12,
-                                                color: Colors.white)),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
+                          _StaffSelectionToolbar(
+                            selectedCount: state.selectedStudentIds.length,
+                            onSelectAll: () => context
+                                .read<CorrectionCubit>()
+                                .selectAllStudents(),
+                            onClear: () => context
+                                .read<CorrectionCubit>()
+                                .clearStudentSelection(),
+                            actionLabel: 'Create Order',
+                            actionIcon: Icons.send_rounded,
+                            actionLoading: state.sendOrderLoading,
+                            onAction: state.sendOrderLoading
+                                ? null
+                                : () => _showCreateOrderDialog(context),
                           ),
                         Expanded(
                           child: _isGridView
@@ -1612,12 +1632,15 @@ class _CorrectionStudentCardState
         fixedImage.path,
         Config.baseUrl + Routes.updateStudentProfile(uuid),
       );
-      if (response.statusCode == 200) {
+      debugPrint("_uploadImage status: ${response.statusCode}, body: ${response.body}");
+      if (response.statusCode == 200 || response.statusCode == 201) {
         final jsonData = jsonDecode(response.body);
-        setState(() {
-          _currentPhotoUrl =
-          jsonData['data']['profile_photo_url'];
-        });
+        final newUrl = jsonData['data']?['profile_photo_url'] as String?;
+        if (newUrl != null) {
+          setState(() => _currentPhotoUrl = newUrl);
+        }
+      } else {
+        debugPrint("Upload failed: ${response.statusCode} ${response.body}");
       }
     } catch (e) {
       debugPrint("Upload error: $e");
@@ -1780,14 +1803,10 @@ class _CorrectionStudentCardState
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: widget.isSelected
-            ? AppTheme.btnColor.withOpacity(0.06)
-            : Colors.white,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: widget.isSelected
-              ? AppTheme.btnColor
-              : Colors.transparent,
+          color: Colors.transparent,
           width: 1.5,
         ),
       ),
@@ -1824,7 +1843,7 @@ class _CorrectionStudentCardState
                       if (photoUrl.isNotEmpty) {
                         _showImagePreview(photoUrl);
                       } else {
-                        _showPicker();
+                        Future.delayed(Duration.zero, _fromCamera);
                       }
                     },
                     child: Stack(
@@ -1932,16 +1951,14 @@ class _CorrectionStudentCardState
   }
 
   Widget _buildShapedPreview(String imageUrl, String shape) {
-    final imageWidget = Image.network(
-      imageUrl,
+    final imageWidget = CachedNetworkImage(
+      imageUrl: imageUrl,
       width: double.infinity,
       fit: BoxFit.contain,
-      loadingBuilder: (_, child, progress) => progress == null
-          ? child
-          : const SizedBox(
+      placeholder: (_, __) => const SizedBox(
           height: 300,
           child: Center(child: CircularProgressIndicator())),
-      errorBuilder: (_, __, ___) => Container(
+      errorWidget: (_, __, ___) => Container(
         height: 300,
         width: double.infinity,
         color: Colors.grey.shade300,
@@ -1971,7 +1988,7 @@ class _CorrectionStudentCardState
   );
 
   Widget _buildPhoto(String photoUrl) {
-    final shape = widget.imageShape ?? 'rectangle';
+    const shape = 'rectangle';
     Widget content;
     if (_isUploading) {
       content = const SizedBox(
@@ -1981,12 +1998,14 @@ class _CorrectionStudentCardState
             child: CircularProgressIndicator(strokeWidth: 2)),
       );
     } else if (photoUrl.isNotEmpty) {
-      content = Image.network(
-        photoUrl,
+      content = CachedNetworkImage(
+        imageUrl: photoUrl,
         height: 60,
         width: 60,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _placeholder(),
+        alignment: Alignment.topCenter,
+        placeholder: (_, __) => _placeholder(),
+        errorWidget: (_, __, ___) => _placeholder(),
       );
     } else {
       content = _placeholder();
@@ -2995,55 +3014,18 @@ class _StaffOrdersTabState extends State<_StaffOrdersTab> {
                 child: Column(
                   children: [
                     if (state.selectedOrderUuids.isNotEmpty)
-                      Container(
-                        color: AppTheme.btnColor.withOpacity(0.08),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        child: Row(
-                          children: [
-                            Text(
-                              '${state.selectedOrderUuids.length} selected',
-                              style: MyStyles.mediumText(
-                                  size: 13, color: AppTheme.btnColor),
-                            ),
-                            const Spacer(),
-                            GestureDetector(
-                              onTap: () => context
-                                  .read<OrdersCubit>()
-                                  .selectAllOrders(),
-                              child: Text('Select All',
-                                  style: MyStyles.mediumText(
-                                      size: 12, color: AppTheme.btnColor)),
-                            ),
-                            const SizedBox(width: 12),
-                            GestureDetector(
-                              onTap: () => context
-                                  .read<OrdersCubit>()
-                                  .clearOrderSelection(),
-                              child: Text('Clear',
-                                  style: MyStyles.mediumText(
-                                      size: 12,
-                                      color: AppTheme.cancelTextColor)),
-                            ),
-                            const SizedBox(width: 12),
-                            GestureDetector(
-                              onTap: () => _showChangeStatusDialog(
-                                context,
-                                state.selectedOrderUuids.toList(),
-                              ),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.btnColor,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text('Change Status',
-                                    style: MyStyles.mediumText(
-                                        size: 11, color: Colors.white)),
-                              ),
-                            ),
-                          ],
+                      _StaffSelectionToolbar(
+                        selectedCount: state.selectedOrderUuids.length,
+                        onSelectAll: () => context
+                            .read<OrdersCubit>()
+                            .selectAllOrders(),
+                        onClear: () => context
+                            .read<OrdersCubit>()
+                            .clearOrderSelection(),
+                        actionLabel: 'Change Status',
+                        onAction: () => _showChangeStatusDialog(
+                          context,
+                          state.selectedOrderUuids.toList(),
                         ),
                       ),
                     Expanded(
@@ -3376,14 +3358,10 @@ class _StaffOrderCardState extends State<_StaffOrderCard> {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: widget.isSelected
-              ? AppTheme.btnColor.withOpacity(0.06)
-              : Colors.white,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: widget.isSelected
-                ? AppTheme.btnColor
-                : Colors.transparent,
+            color: Colors.transparent,
             width: 1.5,
           ),
         ),
@@ -3420,13 +3398,14 @@ class _StaffOrderCardState extends State<_StaffOrderCard> {
               borderRadius: BorderRadius.circular(6),
               child: (student?.profilePhotoUrl != null &&
                   student!.profilePhotoUrl!.isNotEmpty)
-                  ? Image.network(
-                student.profilePhotoUrl!,
+                  ? CachedNetworkImage(
+                imageUrl: student.profilePhotoUrl!,
                 height: 60,
                 width: 60,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    _placeholder(),
+                alignment: Alignment.topCenter,
+                placeholder: (_, __) => _placeholder(),
+                errorWidget: (_, __, ___) => _placeholder(),
               )
                   : _placeholder(),
             ),

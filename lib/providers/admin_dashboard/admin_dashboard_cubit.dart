@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:idmitra/api_mamanger/UserLocal.dart';
 import 'package:idmitra/api_mamanger/api_manager.dart';
@@ -12,7 +15,26 @@ part 'admin_dashboard_state.dart';
 const _kAdminDashboardKey = 'admin_dashboard';
 
 class AdminDashboardCubit extends Cubit<AdminDashboardState> {
-  AdminDashboardCubit() : super(AdminDashboardState());
+  StreamSubscription? _connectivitySubscription;
+  bool _isSyncing = false;
+
+  AdminDashboardCubit() : super(AdminDashboardState()) {
+    _connectivitySubscription =
+        Connectivity().onConnectivityChanged.listen((results) async {
+      final hasInternet = !results.contains(ConnectivityResult.none);
+      if (!hasInternet) return;
+      if (_isSyncing) return; // duplicate call se bachao
+      _isSyncing = true;
+      await loadDashboard();
+      _isSyncing = false;
+    });
+  }
+
+  @override
+  Future<void> close() {
+    _connectivitySubscription?.cancel();
+    return super.close();
+  }
 
   final ApiManager _api = ApiManager();
   final _studentLocalDS = StudentLocalDS();
@@ -86,24 +108,51 @@ class AdminDashboardCubit extends Cubit<AdminDashboardState> {
     return model;
   }
 
+  Future<bool> _isConnected() async {
+    try {
+      final result = await InternetAddress.lookup('google.com')
+          .timeout(const Duration(seconds: 5));
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } on SocketException catch (_) {
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> loadDashboard() async {
     emit(state.copyWith(loading: true, error: null));
 
-    // Load from local first
+    // Step 1: Cache ho toh INSTANTLY dikhao — koi wait nahi
     final localData = await _loadFromLocal(_kAdminDashboardKey);
     if (localData != null) {
       try {
-        var model = SchoolDashboardModel.fromJson(localData);
-        // Inject local student count
-        model = await _injectLocalStudentCount(model);
-        
-        emit(state.copyWith(loading: false, dashboard: model));
-        // Sync from API in background if we have local data
+        final model = SchoolDashboardModel.fromJson(localData);
+        emit(state.copyWith(loading: false, dashboard: model, isOffline: false));
+        print('AdminDashboardCubit: cache shown instantly, checking internet in background');
+
+        // Step 2: Internet check background mein
+        final connected = await _isConnected();
+        print('AdminDashboardCubit: internet connected = $connected');
+        if (!connected) {
+          emit(state.copyWith(isOffline: true));
+          return;
+        }
         _syncFromApi();
         return;
       } catch (e) {
-        print('Error parsing local admin dashboard: $e');
+        print('AdminDashboardCubit: local parse error: $e');
       }
+    }
+
+    // Step 3: Koi cache nahi — internet check phir API call
+    final connected = await _isConnected();
+    print('AdminDashboardCubit: internet connected = $connected');
+
+    if (!connected) {
+      print('AdminDashboardCubit: offline — no local data');
+      emit(state.copyWith(loading: false, error: 'No internet connection', isOffline: true));
+      return;
     }
 
     await _syncFromApi(emitLoading: true);
@@ -127,10 +176,7 @@ class AdminDashboardCubit extends Cubit<AdminDashboardState> {
         // Save to local
         await _saveToLocal(_kAdminDashboardKey, json);
 
-        // Inject local student count before emitting
-        model = await _injectLocalStudentCount(model);
-        
-        emit(state.copyWith(loading: false, dashboard: model, error: null));
+        emit(state.copyWith(loading: false, dashboard: model, error: null, isOffline: false));
       } else {
         if (emitLoading) {
           emit(state.copyWith(

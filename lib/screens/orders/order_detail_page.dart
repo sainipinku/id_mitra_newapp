@@ -131,7 +131,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   Widget _headerCard() {
     final o = _order!;
     final student = o.student;
-    final hasPhoto = student?.profilePhotoUrl?.isNotEmpty ?? false;
+    final hasPhoto = (student?.profilePhotoUrl?.isNotEmpty ?? false) &&
+        !(student?.profilePhotoUrl?.contains('ui-avatars.com') ?? false);
 
     return Container(
       width: double.infinity,

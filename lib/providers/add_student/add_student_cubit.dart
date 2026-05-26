@@ -676,19 +676,29 @@ class AddStudentCubit extends Cubit<AddStudentState> {
   }
 
 
-  Map<String, dynamic> _buildBody(String schoolId, Map<String, dynamic> fields) {
+  Map<String, dynamic> _buildBody(
+      String schoolId,
+      Map<String, dynamic> fields,
+      ) {
     final gender = fields['gender']?.toString().toLowerCase();
+
     final cleanGender =
-    (gender == null || gender == '-select gender-') ? null : gender;
+    (gender == null || gender == '-select gender-')
+        ? null
+        : gender;
 
     String? dob;
+
     final dobRaw = fields['date_of_birth']?.toString();
+
     if (dobRaw != null && dobRaw.isNotEmpty) {
       final parts = dobRaw.split(RegExp(r'[./\-]'));
+
       if (parts.length == 3) {
         final day = parts[0].padLeft(2, '0');
         final month = parts[1].padLeft(2, '0');
         final year = parts[2];
+
         dob = '$year-$month-$day';
       } else {
         dob = dobRaw;
@@ -698,86 +708,310 @@ class AddStudentCubit extends Cubit<AddStudentState> {
     String? f(List<String> keys) {
       for (final k in keys) {
         final v = fields[k]?.toString();
-        if (v != null && v.isNotEmpty) return v;
+
+        if (v != null &&
+            v.isNotEmpty &&
+            v != 'null') {
+          return v;
+        }
       }
+
       return null;
     }
 
+    // =========================
+    // SECTION FIX
+    // =========================
+
+    final sectionId =
+        fields['class_section'] ??
+            fields['school_class_section_id'] ??
+            fields['section'];
+
+    debugPrint(
+      "FINAL school_class_section_id => $sectionId",
+    );
+
+    // =========================
+    // PASSWORD
+    // =========================
+
     final password = f(['password']);
-    final passwordConfirmation = f(['password_confirmation']);
+
+    final passwordConfirmation =
+    f(['password_confirmation']);
 
     final String? finalPassword;
+
     final String? finalPasswordConfirmation;
 
-    if (password != null && password.isNotEmpty) {
+    if (password != null &&
+        password.isNotEmpty) {
       finalPassword = password;
-      finalPasswordConfirmation = passwordConfirmation ?? password;
+
+      finalPasswordConfirmation =
+          passwordConfirmation ?? password;
     } else {
       finalPassword = 'Student@123';
-      finalPasswordConfirmation = 'Student@123';
+
+      finalPasswordConfirmation =
+      'Student@123';
     }
 
-    return {
+    // =========================
+    // FINAL BODY
+    // =========================
+
+    final body = {
       'school_id': schoolId,
+
       'student_name': f(['student_name']),
       'name': f(['student_name']),
+
       'dob': dob,
       'date_of_birth': dob,
+
       'gender': cleanGender,
+
       'blood_group': f(['blood_group']),
+
       'email': f(['student_email']),
       'student_email': f(['student_email']),
+
       'phone': f(['student_phone']),
       'student_phone': f(['student_phone']),
-      'whatsapp_phone': f(['student_whatsapp_number', 'student_whatsapp', 'whatsapp_number']),
-      'student_whatsapp_number': f(['student_whatsapp_number', 'student_whatsapp']),
-      'land_line_no': f(['landline_contact_number', 'landline_number', 'land_line_no']),
-      'landline_contact_number': f(['landline_contact_number', 'landline_number']),
-      'aadhar_no': f(['aadhar_card_number', 'aadhar_no']),
-      'aadhar_card_number': f(['aadhar_card_number', 'aadhar_no']),
-      'uid_no': f(['uid_number', 'uid_no']),
-      'uid_number': f(['uid_number', 'uid_no']),
-      'student_nic_id': f(['student_nic_id', 'nic_id']),
-      'pan_no': f(['pen_number', 'pan_number', 'pan_no']),
-      'pen_number': f(['pen_number', 'pan_number', 'pan_no']),
+
+      'whatsapp_phone': f([
+        'student_whatsapp_number',
+        'student_whatsapp',
+        'whatsapp_number',
+      ]),
+
+      'student_whatsapp_number': f([
+        'student_whatsapp_number',
+        'student_whatsapp',
+      ]),
+
+      'land_line_no': f([
+        'landline_contact_number',
+        'landline_number',
+        'land_line_no',
+      ]),
+
+      'landline_contact_number': f([
+        'landline_contact_number',
+        'landline_number',
+      ]),
+
+      'aadhar_no': f([
+        'aadhar_card_number',
+        'aadhar_no',
+      ]),
+
+      'aadhar_card_number': f([
+        'aadhar_card_number',
+        'aadhar_no',
+      ]),
+
+      'uid_no': f([
+        'uid_number',
+        'uid_no',
+      ]),
+
+      'uid_number': f([
+        'uid_number',
+        'uid_no',
+      ]),
+
+      'student_nic_id': f([
+        'student_nic_id',
+        'nic_id',
+      ]),
+
+      'pan_no': f([
+        'pen_number',
+        'pan_number',
+        'pan_no',
+      ]),
+
+      'pen_number': f([
+        'pen_number',
+        'pan_number',
+        'pan_no',
+      ]),
+
       'caste': f(['caste']),
+
       'religion': f(['religion']),
-      'is_rte_student': f(['is_rte_student']),
+
+      'is_rte_student': f([
+        'is_rte_student',
+      ]),
+
       'address': f(['address']),
+
       'pincode': f(['pincode']),
-      'school_session_id': fields['session']?.toString(),
-      'session': fields['session']?.toString(),
-      'school_class_id': fields['class']?.toString(),
-      'class': fields['class']?.toString(),
-      'school_class_section_id': fields['class_section']?.toString(),
-      'school_house_id': fields['house']?.toString(),
-      'house': fields['house']?.toString(),
 
-      'reg_no': f(['registration_number', 'reg_no']),
-      'registration_number': f(['registration_number', 'reg_no']),
-      'roll_no': f(['roll_number', 'roll_no']),
-      'roll_number': f(['roll_number', 'roll_no']),
-      'admission_no': f(['admission_number', 'admission_no']),
-      'admission_number': f(['admission_number', 'admission_no']),
-      'sr_no': f(['sr_number', 'sr_no']),
-      'sr_number': f(['sr_number', 'sr_no']),
-      'rfid_no': f(['rfid_number', 'rfid_no']),
-      'rfid_number': f(['rfid_number', 'rfid_no']),
+      // =========================
+      // SESSION
+      // =========================
 
-      'transport_mode': f(['transport_mode']),
+      'school_session_id':
+      fields['session']?.toString(),
 
-      'father_name': f(['father_name']),
-      'father_email': f(['father_email']),
-      'father_phone': f(['father_phone']),
-      'father_wphone': f(['father_whatsapp_number', 'father_whatsapp']),
+      'session':
+      fields['session']?.toString(),
 
-      'mother_name': f(['mother_name']),
-      'mother_email': f(['mother_email']),
-      'mother_phone': f(['mother_phone']),
-      'mother_wphone': f(['mother_whatsapp_number', 'mother_whatsapp']),
+      // =========================
+      // CLASS
+      // =========================
+
+      'school_class_id':
+      fields['class']?.toString(),
+
+      'class':
+      fields['class']?.toString(),
+
+      // =========================
+      // SECTION FIXED
+      // =========================
+
+      'school_class_section_id':
+      sectionId?.toString(),
+
+      'class_section':
+      sectionId?.toString(),
+
+      'section':
+      sectionId?.toString(),
+
+      // =========================
+      // HOUSE
+      // =========================
+
+      'school_house_id':
+      fields['house']?.toString(),
+
+      'house':
+      fields['house']?.toString(),
+
+      // =========================
+      // ACADEMIC
+      // =========================
+
+      'reg_no': f([
+        'registration_number',
+        'reg_no',
+      ]),
+
+      'registration_number': f([
+        'registration_number',
+        'reg_no',
+      ]),
+
+      'roll_no': f([
+        'roll_number',
+        'roll_no',
+      ]),
+
+      'roll_number': f([
+        'roll_number',
+        'roll_no',
+      ]),
+
+      'admission_no': f([
+        'admission_number',
+        'admission_no',
+      ]),
+
+      'admission_number': f([
+        'admission_number',
+        'admission_no',
+      ]),
+
+      'sr_no': f([
+        'sr_number',
+        'sr_no',
+      ]),
+
+      'sr_number': f([
+        'sr_number',
+        'sr_no',
+      ]),
+
+      'rfid_no': f([
+        'rfid_number',
+        'rfid_no',
+      ]),
+
+      'rfid_number': f([
+        'rfid_number',
+        'rfid_no',
+      ]),
+
+      // =========================
+      // TRANSPORT
+      // =========================
+
+      'transport_mode': f([
+        'transport_mode',
+      ]),
+
+      // =========================
+      // FATHER
+      // =========================
+
+      'father_name': f([
+        'father_name',
+      ]),
+
+      'father_email': f([
+        'father_email',
+      ]),
+
+      'father_phone': f([
+        'father_phone',
+      ]),
+
+      'father_wphone': f([
+        'father_whatsapp_number',
+        'father_whatsapp',
+      ]),
+
+      // =========================
+      // MOTHER
+      // =========================
+
+      'mother_name': f([
+        'mother_name',
+      ]),
+
+      'mother_email': f([
+        'mother_email',
+      ]),
+
+      'mother_phone': f([
+        'mother_phone',
+      ]),
+
+      'mother_wphone': f([
+        'mother_whatsapp_number',
+        'mother_whatsapp',
+      ]),
+
+      // =========================
+      // PASSWORD
+      // =========================
 
       'password': finalPassword,
-      'password_confirmation': finalPasswordConfirmation,
+
+      'password_confirmation':
+      finalPasswordConfirmation,
     };
-  }
-}
+
+    debugPrint(
+      "FINAL REQUEST BODY => $body",
+    );
+
+    return body;
+  }}

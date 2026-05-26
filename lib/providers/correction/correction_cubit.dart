@@ -9,15 +9,19 @@ import 'package:http/http.dart' as http;
 import 'package:idmitra/api_mamanger/UserLocal.dart';
 import 'package:idmitra/api_mamanger/api_manager.dart';
 import 'package:idmitra/api_mamanger/config.dart';
+import 'package:idmitra/db_helper.dart';
 import 'package:idmitra/local_db/correction_local_ds/correction_local_ds.dart';
 import 'package:idmitra/local_db/student_local_ds/student_local_ds.dart';
 import 'package:idmitra/models/correction/CorrectionListModel.dart';
 import 'package:idmitra/providers/correction/correction_state.dart';
 import 'package:idmitra/utils/pdf_helper.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
 
 class CorrectionCubit extends Cubit<CorrectionState> {
   StreamSubscription? _connectivitySubscription;
+  String? _lastSchoolId;
+  bool _lastIsSchool = false;
 
   CorrectionCubit() : super(const CorrectionState()) {
     _connectivitySubscription = Connectivity()
@@ -26,7 +30,10 @@ class CorrectionCubit extends Cubit<CorrectionState> {
       final hasInternet = !results.contains(ConnectivityResult.none);
       if (hasInternet) {
         await syncPendingChecklists();
-        syncPendingDownloads();
+        await syncPendingDownloads();
+        if (_lastSchoolId != null) {
+          fetchCorrectionList(schoolId: _lastSchoolId!, isSchool: _lastIsSchool);
+        }
       }
     });
     _initSync();
@@ -70,9 +77,14 @@ class CorrectionCubit extends Cubit<CorrectionState> {
     String classId = '',
     String gender = '',
   }) async {
+    _lastSchoolId = schoolId;
+    _lastIsSchool = isSchool;
+
     if (isLoadMore && (state.loading || !state.hasMore)) return;
 
     final currentPage = isLoadMore ? state.page : 1;
+    final isCacheable = !isLoadMore && currentPage == 1 && search.isEmpty && classId.isEmpty && gender.isEmpty;
+    final cacheKey = 'correction_list_${schoolId}_$isSchool';
 
     if (!isLoadMore) {
       emit(state.copyWith(
@@ -84,10 +96,64 @@ class CorrectionCubit extends Cubit<CorrectionState> {
       ));
     }
 
+    // ── Step 1: Show from local cache (page 1, no filters only) ──
+    if (isCacheable) {
+      final localData = await _loadFromLocal(cacheKey);
+      if (localData != null) {
+        final parsed = _parseCorrectionItems(localData);
+        if (parsed.isNotEmpty) {
+          final lastPage = localData['last_page'] as int? ?? 1;
+          emit(state.copyWith(
+            loading: false,
+            items: parsed,
+            page: 2,
+            hasMore: 1 < lastPage,
+          ));
+          // Background sync — silently update cache then refresh UI
+          _fetchCorrectionFromApi(
+            schoolId: schoolId,
+            isSchool: isSchool,
+            currentPage: 1,
+            search: search,
+            classId: classId,
+            gender: gender,
+            isLoadMore: false,
+            isCacheable: true,
+            cacheKey: cacheKey,
+          );
+          return;
+        }
+      }
+    }
+
+    // ── Step 2: No cache — go to API directly ──
+    await _fetchCorrectionFromApi(
+      schoolId: schoolId,
+      isSchool: isSchool,
+      currentPage: currentPage,
+      search: search,
+      classId: classId,
+      gender: gender,
+      isLoadMore: isLoadMore,
+      isCacheable: isCacheable,
+      cacheKey: cacheKey,
+    );
+  }
+
+  Future<void> _fetchCorrectionFromApi({
+    required String schoolId,
+    required bool isSchool,
+    required int currentPage,
+    required String search,
+    required String classId,
+    required String gender,
+    required bool isLoadMore,
+    required bool isCacheable,
+    required String cacheKey,
+  }) async {
     try {
       String url =
           '${Config.baseUrl}auth/school/$schoolId/orders/correction-lists?page=$currentPage&per_page=50';
-
       if (search.isNotEmpty) url += '&search=$search';
       if (classId.isNotEmpty) url += '&class_id=$classId';
       if (gender.isNotEmpty) url += '&gender=$gender';
@@ -100,46 +166,48 @@ class CorrectionCubit extends Cubit<CorrectionState> {
             '${search.isNotEmpty ? '&search=$search' : ''}'
             '${classId.isNotEmpty ? '&class_id=$classId' : ''}'
             '${gender.isNotEmpty ? '&gender=$gender' : ''}';
-
         response = await _api.getRequest(partnerUrl);
       }
 
       if (response == null) {
-        emit(state.copyWith(
-          loading: false,
-          error: 'Failed to load correction list',
-        ));
+        if (state.items.isEmpty) {
+          emit(state.copyWith(loading: false, error: 'No internet connection'));
+        } else {
+          emit(state.copyWith(loading: false));
+        }
         return;
       }
 
       final json = jsonDecode(response.body);
 
       if (json['success'] != true) {
-        emit(state.copyWith(
-          loading: false,
-          error: json['message'] ?? 'Something went wrong',
-        ));
+        if (state.items.isEmpty) {
+          emit(state.copyWith(loading: false, error: json['message'] ?? 'Something went wrong'));
+        } else {
+          emit(state.copyWith(loading: false));
+        }
         return;
       }
 
       final data = json['data'] as Map<String, dynamic>?;
       final checklists = data?['checklists'] as Map<String, dynamic>?;
-
       final List rawList = checklists?['data'] ?? [];
-
       final int lastPage = checklists?['last_page'] ?? 1;
       final int respPage = checklists?['current_page'] ?? 1;
 
       final newItems = rawList
-          .map(
-            (e) => CorrectionItem.fromJson(
-          e as Map<String, dynamic>,
-        ),
-      )
+          .map((e) => CorrectionItem.fromJson(e as Map<String, dynamic>))
           .toList();
 
-      final updatedList =
-      isLoadMore ? [...state.items, ...newItems] : newItems;
+      if (isCacheable && newItems.isNotEmpty) {
+        await _saveToLocal(cacheKey, {
+          'data': rawList,
+          'last_page': lastPage,
+          'current_page': respPage,
+        });
+      }
+
+      final updatedList = isLoadMore ? [...state.items, ...newItems] : newItems;
 
       emit(state.copyWith(
         loading: false,
@@ -148,10 +216,56 @@ class CorrectionCubit extends Cubit<CorrectionState> {
         hasMore: respPage < lastPage,
       ));
     } catch (e) {
-      emit(state.copyWith(
-        loading: false,
-        error: e.toString(),
-      ));
+      if (state.items.isEmpty) {
+        emit(state.copyWith(loading: false, error: e.toString()));
+      } else {
+        emit(state.copyWith(loading: false));
+      }
+    }
+  }
+
+  Future<void> _saveToLocal(String key, Map<String, dynamic> json) async {
+    try {
+      final db = await DBHelper.db;
+      await db.insert(
+        'home_cache',
+        {
+          'key': key,
+          'json_data': jsonEncode(json),
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      print('CorrectionCubit local save error: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>?> _loadFromLocal(String key) async {
+    try {
+      final db = await DBHelper.db;
+      final rows = await db.query(
+        'home_cache',
+        where: 'key = ?',
+        whereArgs: [key],
+        limit: 1,
+      );
+      if (rows.isEmpty) return null;
+      return jsonDecode(rows.first['json_data'] as String) as Map<String, dynamic>;
+    } catch (e) {
+      print('CorrectionCubit local load error: $e');
+      return null;
+    }
+  }
+
+  List<CorrectionItem> _parseCorrectionItems(Map<String, dynamic> cacheData) {
+    try {
+      final List rawList = cacheData['data'] ?? [];
+      return rawList
+          .map((e) => CorrectionItem.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
     }
   }
 
@@ -454,9 +568,6 @@ class CorrectionCubit extends Cubit<CorrectionState> {
     }
 
     if (anySynced) {
-      for (final schoolId in syncedSchoolIds) {
-        await fetchCorrectionStudents(schoolId: schoolId);
-      }
       emit(state.copyWith(syncSuccess: true));
       Future.delayed(const Duration(seconds: 2), () {
         if (!isClosed) emit(state.copyWith(syncSuccess: false));

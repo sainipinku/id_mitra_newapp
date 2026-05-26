@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_exif_rotation/flutter_exif_rotation.dart';
@@ -132,6 +133,8 @@ class _StudentCardState extends State<StudentCard> {
 
     setState(() => isUploading = true);
 
+    final beforeUrl = studentDetailsData.profilePhotoUrl;
+
     try {
       await context.read<StudentsCubit>().uploadStudentImage(
         path: path,
@@ -151,9 +154,40 @@ class _StudentCardState extends State<StudentCard> {
         setState(() {
           studentDetailsData = updatedStudent;
         });
+
+        // Check if photo actually updated or was saved offline
+        final afterUrl = updatedStudent.profilePhotoUrl;
+        final savedOffline = updatedStudent.isPhotoPendingSync;
+
+        if (savedOffline) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Photo saved offline, will sync when online'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 2),
+          ));
+        } else if (afterUrl != beforeUrl && afterUrl != null && afterUrl.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Photo uploaded successfully'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Upload failed, please try again'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ));
+        }
       }
     } catch (e) {
       debugPrint("Upload error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Upload error: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 2),
+        ));
+      }
     }
 
     if (!mounted) return;
@@ -361,12 +395,10 @@ class _StudentCardState extends State<StudentCard> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: widget.isSelected
-            ? AppTheme.btnColor.withOpacity(0.06)
-            : Colors.white,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: widget.isSelected ? AppTheme.btnColor : Colors.transparent,
+          color: Colors.transparent,
           width: 1.5,
         ),
       ),
@@ -417,7 +449,7 @@ class _StudentCardState extends State<StudentCard> {
                         resolvedShape: resolvedShape,
                       );
                     } else {
-                      showPicker(context);
+                      Future.delayed(Duration.zero, _fromCamera);
                     }
                   },
                   child: _buildPhoto(
@@ -443,7 +475,7 @@ class _StudentCardState extends State<StudentCard> {
                           resolvedShape: resolvedShape,
                         );
                       } else {
-                        showPicker(context);
+                        Future.delayed(Duration.zero, _fromCamera);
                       }
                     },
                     child: Container(
@@ -808,8 +840,7 @@ class _StudentCardState extends State<StudentCard> {
       BuildContext context, {
         String? resolvedShape,
       }) {
-    final shape =
-        resolvedShape ?? widget.imageShape ?? 'rectangle';
+    const shape = 'rectangle';
 
     Widget content;
 
@@ -838,6 +869,7 @@ class _StudentCardState extends State<StudentCard> {
               height: 60,
               width: 60,
               fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
             );
           }
 
@@ -850,12 +882,14 @@ class _StudentCardState extends State<StudentCard> {
             .isNotEmpty &&
         !studentDetailsData.profilePhotoUrl!
             .contains('ui-avatars.com')) {
-      content = Image.network(
-        studentDetailsData.profilePhotoUrl!.trim(),
+      content = CachedNetworkImage(
+        imageUrl: studentDetailsData.profilePhotoUrl!.trim(),
         height: 60,
         width: 60,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _placeholder(),
+        alignment: Alignment.topCenter,
+        placeholder: (_, __) => _placeholder(),
+        errorWidget: (_, __, ___) => _placeholder(),
       );
     } else {
       content = _placeholder();
@@ -1088,30 +1122,19 @@ Widget _buildShapedPreview(
       ),
     ),
   )
-      : Image.network(
-    imageUrl,
+      : CachedNetworkImage(
+    imageUrl: imageUrl,
     width: double.infinity,
     fit: BoxFit.contain,
-    loadingBuilder:
-        (context, child, progress) {
-      if (progress == null) return child;
-
-      return const SizedBox(
-        height: 300,
-        child: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-    },
-    errorBuilder: (_, __, ___) => Container(
+    placeholder: (_, __) => const SizedBox(
+      height: 300,
+      child: Center(child: CircularProgressIndicator()),
+    ),
+    errorWidget: (_, __, ___) => Container(
       height: 300,
       width: double.infinity,
       color: Colors.grey.shade300,
-      child: const Icon(
-        Icons.person,
-        size: 80,
-        color: Colors.grey,
-      ),
+      child: const Icon(Icons.person, size: 80, color: Colors.grey),
     ),
   );
 

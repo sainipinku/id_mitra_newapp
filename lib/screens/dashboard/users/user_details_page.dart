@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:idmitra/Widgets/CommonAppBar.dart';
@@ -261,9 +263,7 @@ class _UserDetailsContent extends StatelessWidget {
                 children: [
                   statCard(
                     title: "STUDENTS",
-                    value: localStudentCount > 0
-                        ? "$localStudentCount"
-                        : "${schoolDetailsModel?.studentCount ?? '0'}",
+                    value: "${max(localStudentCount, schoolDetailsModel?.studentCount ?? 0)}",
                     callBtn: () => navigateWithTransition(
                       context: context,
                       page: StudentListingPage(
