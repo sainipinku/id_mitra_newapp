@@ -11,13 +11,16 @@ class StudentLocalDS {
 
     final pendingSyncUuids = <String>{};
     final existingPhotoUrls = <String, String>{};
+    final existingSectionJsons = <String, String>{};
+    final existingClassJsons = <String, String>{};
+    final existingSectionIds = <String, int>{};
 
     if (list.isNotEmpty) {
       final uuids = list.map((e) => e.uuid).where((u) => u != null && u!.isNotEmpty);
       if (uuids.isNotEmpty) {
         final result = await db.query(
           'students',
-          columns: ['uuid', 'is_delete_pending_sync', 'is_offline_update', 'is_status_pending_sync', 'is_photo_pending_sync', 'is_extra_pending_sync', 'is_offline', 'profile_photo_url'],
+          columns: ['uuid', 'is_delete_pending_sync', 'is_offline_update', 'is_status_pending_sync', 'is_photo_pending_sync', 'is_extra_pending_sync', 'is_offline', 'profile_photo_url', 'section_json', 'class_json', 'school_class_section_id'],
           where: "uuid IN (${uuids.map((_) => '?').join(',')})",
           whereArgs: uuids.toList(),
         );
@@ -37,6 +40,21 @@ class StudentLocalDS {
           final photoUrl = row['profile_photo_url'] as String?;
           if (photoUrl != null && photoUrl.isNotEmpty) {
             existingPhotoUrls[uuid] = photoUrl;
+          }
+
+          final sectionJson = row['section_json'] as String?;
+          if (sectionJson != null && sectionJson.isNotEmpty && sectionJson != '{}') {
+            existingSectionJsons[uuid] = sectionJson;
+          }
+
+          final classJson = row['class_json'] as String?;
+          if (classJson != null && classJson.isNotEmpty && classJson != '{}') {
+            existingClassJsons[uuid] = classJson;
+          }
+
+          final sectionId = row['school_class_section_id'];
+          if (sectionId != null) {
+            existingSectionIds[uuid] = sectionId as int;
           }
         }
       }
@@ -77,6 +95,20 @@ class StudentLocalDS {
         }
       }
 
+      // Preserve section_json from local DB if incoming data has no section
+      String finalSectionJson = jsonEncode(e.section?.toJson() ?? {});
+      if ((e.section == null || e.section!.id == null) &&
+          existingSectionJsons.containsKey(e.uuid)) {
+        finalSectionJson = existingSectionJsons[e.uuid]!;
+      }
+
+      // Preserve class_json from local DB if incoming data has no class
+      String finalClassJson = jsonEncode(e.datumClass?.toJson() ?? {});
+      if ((e.datumClass == null || e.datumClass!.id == null) &&
+          existingClassJsons.containsKey(e.uuid)) {
+        finalClassJson = existingClassJsons[e.uuid]!;
+      }
+
       batch.delete('students', where: 'uuid = ?', whereArgs: [e.uuid]);
 
       batch.insert(
@@ -90,7 +122,7 @@ class StudentLocalDS {
           "phone": e.phone?.toString(),
           "gender": e.gender?.toString(),
           "school_class_id": e.schoolClassId,
-          "school_class_section_id": e.schoolClassSectionId,
+          "school_class_section_id": e.schoolClassSectionId ?? existingSectionIds[e.uuid],
           "father_name": e.fatherName ?? "",
           "father_phone": e.fatherPhone,
           "mother_name": e.motherName,
@@ -110,8 +142,8 @@ class StudentLocalDS {
           /// Nested JSON
           "missing_fields": jsonEncode(e.missingFields ?? []),
           "session_json": jsonEncode(e.session?.toJson() ?? {}),
-          "class_json": jsonEncode(e.datumClass?.toJson() ?? {}),
-          "section_json": jsonEncode(e.section?.toJson() ?? {}),
+          "class_json": finalClassJson,
+          "section_json": finalSectionJson,
           "house_json": jsonEncode(e.house ?? {}),
 
           /// Full Raw JSON
@@ -195,12 +227,19 @@ class StudentLocalDS {
     return data.map((e) {
       final map = Map<String, dynamic>.from(e);
 
+      dynamic _decodeOrNull(String? jsonStr) {
+        if (jsonStr == null || jsonStr.isEmpty) return null;
+        final decoded = jsonDecode(jsonStr);
+        if (decoded is Map && (decoded.isEmpty || decoded['id'] == null)) return null;
+        return decoded;
+      }
+
       /// Decode JSON Fields
       map["missing_fields"] = jsonDecode(map["missing_fields"] ?? "[]");
-      map["session"] = jsonDecode(map["session_json"] ?? "{}");
-      map["class"] = jsonDecode(map["class_json"] ?? "{}");
-      map["section"] = jsonDecode(map["section_json"] ?? "{}");
-      map["house"] = jsonDecode(map["house_json"] ?? "{}");
+      map["session"] = _decodeOrNull(map["session_json"] as String?);
+      map["class"] = _decodeOrNull(map["class_json"] as String?);
+      map["section"] = _decodeOrNull(map["section_json"] as String?);
+      map["house"] = _decodeOrNull(map["house_json"] as String?);
 
       return StudentDetailsData.fromJson(map);
     }).toList();

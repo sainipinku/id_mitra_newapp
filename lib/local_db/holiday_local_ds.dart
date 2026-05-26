@@ -24,25 +24,36 @@ class HolidayLocalDS {
 
   Future<List<HolidayModel>> getHolidays(
       String schoolId, int year, String search) async {
-    final db = await DBHelper.db;
-    final rows = await db.query(
-      'holidays_cache',
-      where: 'school_id = ? AND year = ?',
-      whereArgs: [schoolId, year],
-    );
-    if (rows.isEmpty) return [];
-    final list =
-        jsonDecode(rows.first['holidays_json'] as String) as List;
-    var result = list
-        .map((e) => HolidayModel.fromJson(e as Map<String, dynamic>))
-        .toList();
-    if (search.isNotEmpty) {
-      final q = search.toLowerCase();
-      result = result
-          .where((h) => (h.name ?? '').toLowerCase().contains(q))
+    try {
+      final db = await DBHelper.db;
+      final rows = await db.query(
+        'holidays_cache',
+        where: 'school_id = ? AND year = ?',
+        whereArgs: [schoolId, year],
+      );
+      if (rows.isEmpty) return [];
+      final list =
+          jsonDecode(rows.first['holidays_json'] as String? ?? '[]') as List;
+      var result = list
+          .map((e) => HolidayModel.fromJson(e as Map<String, dynamic>))
           .toList();
+      if (search.isNotEmpty) {
+        final q = search.toLowerCase();
+        result = result
+            .where((h) => (h.name ?? '').toLowerCase().contains(q))
+            .toList();
+      }
+      return result;
+    } catch (e) {
+      // Corrupted cache — wipe it so next online fetch rebuilds it cleanly
+      try {
+        final db = await DBHelper.db;
+        await db.delete('holidays_cache',
+            where: 'school_id = ? AND year = ?',
+            whereArgs: [schoolId, year]);
+      } catch (_) {}
+      return [];
     }
-    return result;
   }
 
   /// Updates the cached holiday list for (schoolId, year) by replacing

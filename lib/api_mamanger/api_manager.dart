@@ -8,8 +8,8 @@ import 'package:idmitra/api_mamanger/secure_storage.dart';
 import 'package:idmitra/services/maintenance_service.dart';
 
 class ApiManager {
-  //Checks the response status and triggers maintenance screen if server is down.
-  // Returns true if the response is a maintenance/server-error status.
+  /// Checks the response status and triggers maintenance screen if server is down.
+  /// Returns true if the response is a maintenance/server-error status.
   bool _handleMaintenanceCheck(int statusCode) {
     if (statusCode == 503 || statusCode == 502) {
       MaintenanceService.instance.onServerDown();
@@ -367,7 +367,7 @@ Response: ${response.body}
     request.headers['Authorization'] = "Bearer $token";
 
     try {
-      final response = await request.send();
+      final response = await request.send().timeout(const Duration(seconds: 120));
 
       return http.Response.fromStream(response);
     } catch (error) {

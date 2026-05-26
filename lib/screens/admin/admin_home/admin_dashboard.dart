@@ -230,8 +230,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
             CircleAvatar(
               radius: 20,
               backgroundColor: const Color(0xFFE0E0E0),
-              backgroundImage: _profileImage.isNotEmpty ? NetworkImage(_profileImage) : null,
-              child: _profileImage.isEmpty ? const Icon(Icons.person, color: Colors.grey) : null,
+              backgroundImage: _profileImage.isNotEmpty && !_profileImage.contains('ui-avatars.com')
+                  ? NetworkImage(_profileImage)
+                  : null,
+              child: _profileImage.isEmpty || _profileImage.contains('ui-avatars.com')
+                  ? const Icon(Icons.person, color: Colors.grey)
+                  : null,
             ),
             const SizedBox(width: 12),
             Expanded(

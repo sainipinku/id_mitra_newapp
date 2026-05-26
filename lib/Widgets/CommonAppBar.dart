@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:idmitra/Widgets/shimmer_loader.dart';
 import 'package:idmitra/Widgets/svg_file.dart';
 import 'package:idmitra/components/app_theme.dart';
+import 'package:idmitra/screens/backup_global_data/backup_global_data_screen.dart';
 
 
 
@@ -245,7 +246,14 @@ PreferredSizeWidget dashboardAppBar(BuildContext context) {
                             padding: const EdgeInsets.all(3.0),
                             child: svgIcon(icon: 'assets/icons/home/notification.svg', clr: AppTheme.btnColor,),
                           )),
-                      onPressed: () {},
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const BackupGlobalDataScreen(),
+                          ),
+                        );
+                      },
                     ),
 
                     /// Notification Badge

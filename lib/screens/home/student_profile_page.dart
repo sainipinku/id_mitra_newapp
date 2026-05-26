@@ -330,7 +330,8 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
 
   Widget _headerCard(BuildContext context) {
     final isActive = (_student.status ?? 0) == 1;
-    final hasPhoto = (_student.profilePhotoUrl?.isNotEmpty ?? false) ||
+    final hasPhoto = ((_student.profilePhotoUrl?.isNotEmpty ?? false) &&
+            !(_student.profilePhotoUrl?.contains('ui-avatars.com') ?? false)) ||
         (_student.isPhotoPendingSync && _student.offlinePhotoPath != null);
     final admNo = _student.admissionNo?.toString() ?? '';
     final phone = _student.phone?.toString() ?? '';
@@ -390,7 +391,8 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                               _student.offlinePhotoPath != null
                               ? FileImage(File(_student.offlinePhotoPath!))
                           as ImageProvider
-                              : (_student.profilePhotoUrl?.isNotEmpty ?? false)
+                              : ((_student.profilePhotoUrl?.isNotEmpty ?? false) &&
+                                      !(_student.profilePhotoUrl!.contains('ui-avatars.com')))
                               ? NetworkImage(_student.profilePhotoUrl!)
                               : null,
                           child: _isUploading

@@ -357,11 +357,9 @@ class OrdersCubit extends Cubit<OrdersState> {
 
       final apiOrders = rawList.map((e) => OrderModel.fromJson(e as Map<String, dynamic>)).toList();
 
-      // Cache fresh orders
-      if (!isLoadMore && search.isEmpty && status.isEmpty && classFilter.isEmpty && dateFrom.isEmpty) {
-        await _orderLocalDS.clearForSchool(schoolId);
-      }
-      await _orderLocalDS.insertOrders(apiOrders, schoolId);
+      // fromApi:true + page se insertOrders khud clear logic handle karta hai
+      // (page=1 pe sab purane records hata deta hai, page>1 pe sirf matching UUIDs replace)
+      await _orderLocalDS.insertOrders(apiOrders, schoolId, fromApi: true, page: currentPage);
 
       final List<OrderModel> updatedList =
           isLoadMore ? [...state.ordersList, ...apiOrders] : [...pendingOrders, ...apiOrders];
@@ -515,11 +513,8 @@ class OrdersCubit extends Cubit<OrdersState> {
       final apiOrders =
           rawList.map((e) => OrderModel.fromJson(e as Map<String, dynamic>)).toList();
 
-      // Cache fresh orders
-      if (!isLoadMore && search.isEmpty && status.isEmpty && dateFrom.isEmpty) {
-        if (schoolId.isNotEmpty) await _orderLocalDS.clearForSchool(schoolId);
-      }
-      await _orderLocalDS.insertOrders(apiOrders, schoolId.isNotEmpty ? schoolId : "0");
+      // fromApi:true + page se insertOrders khud clear logic handle karta hai
+      await _orderLocalDS.insertOrders(apiOrders, schoolId.isNotEmpty ? schoolId : "0", fromApi: true, page: currentPage);
 
       final List<OrderModel> updatedList =
           isLoadMore ? [...state.ordersList, ...apiOrders] : [...pendingOrders, ...apiOrders];
@@ -606,18 +601,20 @@ class OrdersCubit extends Cubit<OrdersState> {
   }
 
   // ─── Order selection for bulk status update ──────────────────────────────
-  void toggleOrderSelection(String uuid) {
+  // Uses order.id.toString() as the key so empty/duplicate UUIDs don't cause
+  // the whole list to appear selected.
+  void toggleOrderSelection(String orderId) {
     final current = Set<String>.from(state.selectedOrderUuids);
-    if (current.contains(uuid)) {
-      current.remove(uuid);
+    if (current.contains(orderId)) {
+      current.remove(orderId);
     } else {
-      current.add(uuid);
+      current.add(orderId);
     }
     emit(state.copyWith(selectedOrderUuids: current));
   }
 
   void selectAllOrders() {
-    final all = state.ordersList.map((o) => o.uuid).toSet();
+    final all = state.ordersList.map((o) => o.id.toString()).toSet();
     emit(state.copyWith(selectedOrderUuids: all));
   }
 

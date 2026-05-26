@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -87,17 +88,15 @@ Widget _buildShapedPreview(String imageUrl, String shape) {
             child: const Icon(Icons.person, size: 80, color: Colors.grey),
           ),
         )
-      : Image.network(
-          imageUrl,
+      : CachedNetworkImage(
+          imageUrl: imageUrl,
           width: double.infinity,
           fit: BoxFit.contain,
-          loadingBuilder: (_, child, progress) => progress == null
-              ? child
-              : const SizedBox(
-                  height: 300,
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-          errorBuilder: (_, __, ___) => Container(
+          placeholder: (_, __) => const SizedBox(
+            height: 300,
+            child: Center(child: CircularProgressIndicator()),
+          ),
+          errorWidget: (_, __, ___) => Container(
             height: 300,
             width: double.infinity,
             color: Colors.grey.shade300,
@@ -436,56 +435,6 @@ class _StaffListBodyState extends State<_StaffListBody> {
         onRefresh: _refresh,
         child: Column(
           children: [
-            if (_selectedIds.isNotEmpty)
-              BlocBuilder<StaffListCubit, StaffListState>(
-                builder: (_, staffState) => Container(
-                  margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.btnColor.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    children: [
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () => _selectAll(staffState.list),
-                        child: Text('Select All',
-                            style: MyStyles.mediumText(
-                                size: 12, color: AppTheme.btnColor)),
-                      ),
-                      TextButton(
-                        onPressed: _clearSelection,
-                        child: Text('Clear',
-                            style: MyStyles.mediumText(
-                                size: 12, color: Colors.grey)),
-                      ),
-                      const SizedBox(width: 4),
-                      GestureDetector(
-                        onTap: () =>
-                            _showProcessChecklistDialog(context),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: AppTheme.btnColor,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('Process Checklist',
-                                  style: MyStyles.mediumText(
-                                      size: 12, color: Colors.white)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
               child: TextField(
@@ -514,6 +463,16 @@ class _StaffListBodyState extends State<_StaffListBody> {
                 ),
               ),
             ),
+            if (_selectedIds.isNotEmpty)
+              BlocBuilder<StaffListCubit, StaffListState>(
+                builder: (_, staffState) => _StaffListSelectionToolbar(
+                  selectedCount: _selectedIds.length,
+                  onSelectAll: () => _selectAll(staffState.list),
+                  onClear: _clearSelection,
+                  actionLabel: 'Process Checklist',
+                  onAction: () => _showProcessChecklistDialog(context),
+                ),
+              ),
             Expanded(
               child: BlocBuilder<StaffListCubit, StaffListState>(
                 builder: (context, state) {
@@ -740,7 +699,7 @@ class _StaffCardState extends State<_StaffCard> {
 
 
   Widget _buildPhoto(BuildContext context, String initials) {
-    final shape = _resolveImageShape(context, schoolId);
+    const shape = 'rectangle';
 
     return BlocBuilder<StaffListCubit, StaffListState>(
       buildWhen: (p, c) =>
@@ -765,6 +724,7 @@ class _StaffCardState extends State<_StaffCard> {
                   height: 60,
                   width: 60,
                   fit: BoxFit.cover,
+                  alignment: Alignment.topCenter,
                 );
               }
               return _placeholder(initials);
@@ -778,14 +738,17 @@ class _StaffCardState extends State<_StaffCard> {
                   height: 60,
                   width: 60,
                   fit: BoxFit.cover,
+                  alignment: Alignment.topCenter,
                   errorBuilder: (_, __, ___) => _placeholder(initials),
                 )
-              : Image.network(
-                  _activePhotoUrl!,
+              : CachedNetworkImage(
+                  imageUrl: _activePhotoUrl!,
                   height: 60,
                   width: 60,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _placeholder(initials),
+                  alignment: Alignment.topCenter,
+                  placeholder: (_, __) => _placeholder(initials),
+                  errorWidget: (_, __, ___) => _placeholder(initials),
                 );
         } else {
           content = _placeholder(initials);
@@ -1305,16 +1268,8 @@ class _StaffCardState extends State<_StaffCard> {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: widget.isSelected
-              ? AppTheme.btnColor.withOpacity(0.06)
-              : Colors.white,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: widget.isSelected
-                ? AppTheme.btnColor
-                : Colors.transparent,
-            width: 1.5,
-          ),
         ),
         child: Row(
           children: [
@@ -1651,73 +1606,6 @@ class _StaffCorrectionTabState extends State<_StaffCorrectionTab> {
         },
         child: Column(
           children: [
-            // ── CHANGE 1: Process Checklist banner search ke UPAR aata hai ──
-            BlocBuilder<StaffCorrectionCubit, StaffCorrectionState>(
-              buildWhen: (p, c) =>
-              p.selectedIds != c.selectedIds ||
-                  p.sendOrderLoading != c.sendOrderLoading,
-              builder: (ctx, s) {
-                if (s.selectedIds.isEmpty) return const SizedBox.shrink();
-                return Container(
-                  color: AppTheme.btnColor.withOpacity(0.08),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 8),
-                  child: Row(
-                    children: [
-                      Text('${s.selectedIds.length} selected',
-                          style: MyStyles.mediumText(
-                              size: 13, color: AppTheme.btnColor)),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () =>
-                            ctx.read<StaffCorrectionCubit>().selectAll(),
-                        child: Text('Select All',
-                            style: MyStyles.mediumText(
-                                size: 12, color: AppTheme.btnColor)),
-                      ),
-                      TextButton(
-                        onPressed: () =>
-                            ctx.read<StaffCorrectionCubit>().clearSelection(),
-                        child: Text('Clear',
-                            style: MyStyles.mediumText(
-                                size: 12, color: Colors.grey)),
-                      ),
-                      const SizedBox(width: 4),
-                      s.sendOrderLoading
-                          ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppTheme.btnColor))
-                          : GestureDetector(
-                        onTap: () => _showCreateOrderDialog(context),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 7),
-                          decoration: BoxDecoration(
-                              color: AppTheme.btnColor,
-                              borderRadius:
-                              BorderRadius.circular(20)),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.send_rounded,
-                                  size: 13, color: Colors.white),
-                              const SizedBox(width: 5),
-                              Text('Create Order',
-                                  style: MyStyles.mediumText(
-                                      size: 12,
-                                      color: Colors.white)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
             // ── Search field ──
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -1746,6 +1634,23 @@ class _StaffCorrectionTabState extends State<_StaffCorrectionTab> {
                       size: 14, color: AppTheme.graySubTitleColor),
                 ),
               ),
+            ),
+            BlocBuilder<StaffCorrectionCubit, StaffCorrectionState>(
+              buildWhen: (p, c) =>
+              p.selectedIds != c.selectedIds ||
+                  p.sendOrderLoading != c.sendOrderLoading,
+              builder: (ctx, s) {
+                if (s.selectedIds.isEmpty) return const SizedBox.shrink();
+                return _StaffListSelectionToolbar(
+                  selectedCount: s.selectedIds.length,
+                  onSelectAll: () => ctx.read<StaffCorrectionCubit>().selectAll(),
+                  onClear: () => ctx.read<StaffCorrectionCubit>().clearSelection(),
+                  actionLabel: 'Create Order',
+                  actionIcon: Icons.send_rounded,
+                  actionLoading: s.sendOrderLoading,
+                  onAction: s.sendOrderLoading ? null : () => _showCreateOrderDialog(context),
+                );
+              },
             ),
             Expanded(
               child: BlocBuilder<StaffCorrectionCubit, StaffCorrectionState>(
@@ -2248,7 +2153,7 @@ class _StaffCorrectionItemCardState extends State<_StaffCorrectionItemCard> {
   }
 
   Widget _buildPhoto(BuildContext context, String initials) {
-    final shape = _resolveImageShape(context, widget.schoolId);
+    const shape = 'rectangle';
     final staff = widget.item.effectiveStaff;
     final photoUrl = _currentPhotoUrl;
     final isOffline = staff?.isPhotoPendingSync == true && staff?.offlinePhotoPath != null;
@@ -2265,6 +2170,7 @@ class _StaffCorrectionItemCardState extends State<_StaffCorrectionItemCard> {
               height: 60,
               width: 60,
               fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
             );
           }
           return _placeholder(initials);
@@ -2278,14 +2184,17 @@ class _StaffCorrectionItemCardState extends State<_StaffCorrectionItemCard> {
               height: 60,
               width: 60,
               fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
               errorBuilder: (_, __, ___) => _placeholder(initials),
             )
-          : Image.network(
-              photoUrl,
+          : CachedNetworkImage(
+              imageUrl: photoUrl,
               height: 60,
               width: 60,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _placeholder(initials),
+              alignment: Alignment.topCenter,
+              placeholder: (_, __) => _placeholder(initials),
+              errorWidget: (_, __, ___) => _placeholder(initials),
             );
     } else {
       content = _placeholder(initials);
@@ -2558,6 +2467,108 @@ class _StaffCorrectionItemCardState extends State<_StaffCorrectionItemCard> {
   }
 }
 
+
+// ── Selection Toolbar ──
+class _StaffListSelectionToolbar extends StatelessWidget {
+  final int selectedCount;
+  final VoidCallback onSelectAll;
+  final VoidCallback onClear;
+  final String actionLabel;
+  final IconData? actionIcon;
+  final VoidCallback? onAction;
+  final bool actionLoading;
+
+  const _StaffListSelectionToolbar({
+    required this.selectedCount,
+    required this.onSelectAll,
+    required this.onClear,
+    required this.actionLabel,
+    this.actionIcon,
+    this.onAction,
+    this.actionLoading = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppTheme.btnColor.withOpacity(0.07),
+        border: Border(left: BorderSide(color: AppTheme.btnColor, width: 3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: AppTheme.btnColor,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              '$selectedCount',
+              style: MyStyles.boldText(size: 12, color: Colors.white),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'selected',
+            style: MyStyles.regularText(size: 12, color: AppTheme.graySubTitleColor),
+          ),
+          const SizedBox(width: 8),
+          Container(width: 1, height: 14, color: Colors.grey.shade300),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onSelectAll,
+            child: Text(
+              'Select All',
+              style: MyStyles.mediumText(size: 12, color: AppTheme.btnColor),
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: onClear,
+            child: Text(
+              'Clear',
+              style: MyStyles.mediumText(size: 12, color: AppTheme.graySubTitleColor),
+            ),
+          ),
+          const Spacer(),
+          if (actionLoading)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.btnColor),
+            )
+          else if (onAction != null)
+            GestureDetector(
+              onTap: onAction,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppTheme.btnColor,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (actionIcon != null) ...[
+                      Icon(actionIcon, size: 13, color: Colors.white),
+                      const SizedBox(width: 5),
+                    ],
+                    Text(
+                      actionLabel,
+                      style: MyStyles.mediumText(size: 12, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
 
 class _StaffOrdersTab extends StatefulWidget {
   final String schoolId;
@@ -2874,28 +2885,6 @@ class _StaffOrdersTabState extends State<_StaffOrdersTab> {
                 ],
               ),
             ),
-            if (!state.ordersLoading && state.ordersTotal > 0)
-              Container(
-                color: Colors.white,
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                      color: AppTheme.btnColor.withOpacity(0.07),
-                      borderRadius: BorderRadius.circular(10)),
-                  child: Row(
-                    children: [
-                      Icon(Icons.badge_outlined,
-                          size: 14, color: AppTheme.btnColor),
-                      const SizedBox(width: 6),
-                      Text('Total: ${state.ordersTotal}',
-                          style: MyStyles.mediumText(
-                              size: 12, color: AppTheme.btnColor)),
-                    ],
-                  ),
-                ),
-              ),
             Expanded(
               child: state.ordersError != null && state.orders.isEmpty
                   ? Center(
@@ -2947,55 +2936,14 @@ class _StaffOrdersTabState extends State<_StaffOrdersTab> {
                 child: Column(
                   children: [
                     if (state.selectedStaffOrderIds.isNotEmpty)
-                      Container(
-                        color: AppTheme.btnColor.withOpacity(0.08),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        child: Row(
-                          children: [
-                            Text(
-                              '${state.selectedStaffOrderIds.length} selected',
-                              style: MyStyles.mediumText(
-                                  size: 13, color: AppTheme.btnColor),
-                            ),
-                            const Spacer(),
-                            GestureDetector(
-                              onTap: () => context
-                                  .read<StaffListCubit>()
-                                  .selectAllStaffOrders(),
-                              child: Text('Select All',
-                                  style: MyStyles.mediumText(
-                                      size: 12, color: AppTheme.btnColor)),
-                            ),
-                            const SizedBox(width: 12),
-                            GestureDetector(
-                              onTap: () => context
-                                  .read<StaffListCubit>()
-                                  .clearStaffOrderSelection(),
-                              child: Text('Clear',
-                                  style: MyStyles.mediumText(
-                                      size: 12,
-                                      color: AppTheme.cancelTextColor)),
-                            ),
-                            const SizedBox(width: 12),
-                            GestureDetector(
-                              onTap: () => _showChangeStatusDialog(
-                                context,
-                                state.selectedStaffOrderIds.toList(),
-                              ),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.btnColor,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text('Change Status',
-                                    style: MyStyles.mediumText(
-                                        size: 11, color: Colors.white)),
-                              ),
-                            ),
-                          ],
+                      _StaffListSelectionToolbar(
+                        selectedCount: state.selectedStaffOrderIds.length,
+                        onSelectAll: () => context.read<StaffListCubit>().selectAllStaffOrders(),
+                        onClear: () => context.read<StaffListCubit>().clearStaffOrderSelection(),
+                        actionLabel: 'Change Status',
+                        onAction: () => _showChangeStatusDialog(
+                          context,
+                          state.selectedStaffOrderIds.toList(),
                         ),
                       ),
                     Expanded(
@@ -3248,12 +3196,10 @@ class _StaffOrderItemCard extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isSelected
-                  ? AppTheme.btnColor.withOpacity(0.06)
-                  : Colors.white,
+              color: Colors.white,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: isSelected ? AppTheme.btnColor : Colors.transparent,
+                color: Colors.transparent,
                 width: 1.5,
               ),
             ),
@@ -3286,11 +3232,14 @@ class _StaffOrderItemCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(6),
                   child: (order.staffPhoto != null &&
                       order.staffPhoto!.isNotEmpty)
-                      ? Image.network(order.staffPhoto!,
+                      ? CachedNetworkImage(
+                      imageUrl: order.staffPhoto!,
                       height: 60,
                       width: 60,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _placeholder())
+                      alignment: Alignment.topCenter,
+                      placeholder: (_, __) => _placeholder(),
+                      errorWidget: (_, __, ___) => _placeholder())
                       : _placeholder(),
                 ),
                 const SizedBox(width: 12),

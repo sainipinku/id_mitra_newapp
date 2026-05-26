@@ -32,8 +32,9 @@ class StaffCorrectionCubit extends Cubit<StaffCorrectionState> {
       if (!hasInternet) return;
 
       if (_lastSchoolId != null) {
-        syncOfflinePhotos(schoolId: _lastSchoolId!);
-        syncPendingStaffChecklists(schoolId: _lastSchoolId!);
+        await syncOfflinePhotos(schoolId: _lastSchoolId!);
+        await syncPendingStaffChecklists(schoolId: _lastSchoolId!);
+        fetchStaffCorrection(schoolId: _lastSchoolId!);
       }
     });
   }

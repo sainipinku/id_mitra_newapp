@@ -25,6 +25,13 @@ class AttendanceCubit extends Cubit<AttendanceState> {
       if (!hasInternet) return;
       if (_lastSchoolId != null) {
         await syncPendingAttendance(schoolId: _lastSchoolId!);
+        if (state.selectedClass != null && state.selectedDate.isNotEmpty) {
+          fetchAttendance(
+            schoolId: _lastSchoolId!,
+            classId: state.selectedClass!.id,
+            date: state.selectedDate,
+          );
+        }
       }
     });
   }
