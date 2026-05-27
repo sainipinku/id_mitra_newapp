@@ -15,7 +15,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 36,
+      version: 37,
       onCreate: (db, version) async {
         await db.execute('''
         CREATE TABLE students (
@@ -96,8 +96,13 @@ class DBHelper {
         await _createPendingDeleteHolidaysTable(db);
         await _createPendingUpdateHolidaysTable(db);
         await _createServerStatusTable(db);
+        await _createGlobalBackupTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 37) {
+          await _createGlobalBackupTable(db);
+        }
+
         if (oldVersion < 36) {
           await _createServerStatusTable(db);
         }
@@ -771,6 +776,23 @@ class DBHelper {
           updated_at INTEGER NOT NULL
         )
         ''');
+  }
+
+  static Future<void> _createGlobalBackupTable(Database db) async {
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS global_backup (
+          entity_type TEXT NOT NULL,
+          entity_id   TEXT NOT NULL,
+          school_id   TEXT,
+          raw_json    TEXT NOT NULL,
+          synced_at   INTEGER NOT NULL,
+          PRIMARY KEY (entity_type, entity_id)
+        )
+        ''');
+
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_global_backup_type_school ON global_backup(entity_type, school_id)',
+    );
   }
 
   static Future<void> _createStaffTable(Database db) async {

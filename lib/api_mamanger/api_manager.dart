@@ -42,7 +42,8 @@ class ApiManager {
           response.statusCode == 404 ||
           response.statusCode == 203 ||
           response.statusCode == 405 ||
-          response.statusCode == 400) {
+          response.statusCode == 400 ||
+          response.statusCode == 429) {
         return response;
       } else {
         return null;
