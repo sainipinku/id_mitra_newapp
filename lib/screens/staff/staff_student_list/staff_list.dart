@@ -1325,8 +1325,8 @@ class _StaffCardState extends State<_StaffCard> {
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 2),
                       ),
-                      child: Icon(
-                        hasPhoto ? Icons.preview : Icons.camera_alt,
+                      child: const Icon(
+                        Icons.camera_alt,
                         size: 12,
                         color: Colors.white,
                       ),
@@ -2379,8 +2379,8 @@ class _StaffCorrectionItemCardState extends State<_StaffCorrectionItemCard> {
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 2),
                       ),
-                      child: Icon(
-                        hasPhoto ? Icons.preview : Icons.camera_alt,
+                      child: const Icon(
+                        Icons.camera_alt,
                         size: 12,
                         color: Colors.white,
                       ),

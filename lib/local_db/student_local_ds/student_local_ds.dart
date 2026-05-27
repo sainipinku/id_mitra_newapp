@@ -80,7 +80,12 @@ class StudentLocalDS {
         }
       }
 
+      // profilePhotoUrl is from local DB column; photo field comes from server API response
       String? finalPhotoUrl = e.profilePhotoUrl;
+      if ((finalPhotoUrl == null || finalPhotoUrl.isEmpty) && e.photo is String) {
+        final photoStr = e.photo as String;
+        if (photoStr.isNotEmpty) finalPhotoUrl = photoStr;
+      }
       final isNewPlaceholder = finalPhotoUrl == null ||
           finalPhotoUrl.isEmpty ||
           finalPhotoUrl.contains('ui-avatars.com');

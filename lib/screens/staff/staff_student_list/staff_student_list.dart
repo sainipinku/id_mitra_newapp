@@ -1861,10 +1861,8 @@ class _CorrectionStudentCardState
                               border: Border.all(
                                   color: Colors.white, width: 2),
                             ),
-                            child: Icon(
-                              photoUrl.isNotEmpty
-                                  ? Icons.preview
-                                  : Icons.camera_alt,
+                            child: const Icon(
+                              Icons.camera_alt,
                               size: 12,
                               color: Colors.white,
                             ),
@@ -3568,9 +3566,6 @@ class _StaffOrderCardState extends State<_StaffOrderCard> {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Date formatter
-// ---------------------------------------------------------------------------
 
 class _StaffDotDateFormatter extends TextInputFormatter {
   @override
@@ -3608,29 +3603,30 @@ class _StaffStudentsProcessChecklistDialog extends StatefulWidget {
 
 class _StaffStudentsProcessChecklistDialogState
     extends State<_StaffStudentsProcessChecklistDialog> {
+
+
   static const _listTypes = [
     {'value': '', 'label': '- Select List Type -'},
+
     {
-      'value': 'selected_class_wise',
-      'label': 'Selected Data - Class Wise'
+      'value': 'class_wise',
+      'label': 'Class Wise',
     },
+
     {
-      'value': 'selected_section_wise',
-      'label': 'Selected Data - Section Wise'
-    },
-    {
-      'value': 'complete_class_wise',
-      'label': 'Complete School Class Wise'
-    },
-    {
-      'value': 'complete_section_wise',
-      'label': 'Complete School Class Sections Wise'
+      'value': 'section_wise',
+      'label': 'Section Wise',
     },
   ];
 
+
   static const _processTypes = [
     {'value': '', 'label': '- Select Process Type -'},
-    {'value': 'create', 'label': 'Create Correction List'},
+
+    {
+      'value': 'create',
+      'label': 'Create Correction List',
+    },
   ];
 
   String _selectedListType = '';
@@ -3638,269 +3634,531 @@ class _StaffStudentsProcessChecklistDialogState
 
   @override
   Widget build(BuildContext context) {
+
     return BlocConsumer<CorrectionCubit, CorrectionState>(
+
       listenWhen: (p, c) =>
       p.sendOrderLoading != c.sendOrderLoading ||
           p.sendOrderSuccess != c.sendOrderSuccess ||
           p.sendOrderError != c.sendOrderError,
+
       listener: (ctx, state) {
+
+        print("=========== LISTENER ===========");
+        print("Loading => ${state.sendOrderLoading}");
+        print("Success => ${state.sendOrderSuccess}");
+        print("Error => ${state.sendOrderError}");
+        print("Message => ${state.sendOrderMessage}");
+
+        /// SUCCESS
         if (!state.sendOrderLoading &&
             state.sendOrderSuccess) {
+
           Navigator.of(context).pop();
+
           widget.onSuccess?.call();
-          ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-            content: const Text(
-                'Correction list created successfully!'),
-            backgroundColor: AppTheme.btnColor,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10)),
-            margin: const EdgeInsets.all(12),
-          ));
+
+          ScaffoldMessenger.of(ctx).showSnackBar(
+            SnackBar(
+              content: Text(
+                state.sendOrderMessage ??
+                    'Correction list created successfully!',
+              ),
+
+              backgroundColor: AppTheme.btnColor,
+
+              behavior: SnackBarBehavior.floating,
+
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+
+              margin: const EdgeInsets.all(12),
+            ),
+          );
         }
+
+        /// ERROR
         if (!state.sendOrderLoading &&
             state.sendOrderError != null) {
-          Navigator.of(context).pop();
-          ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-            content: Text(state.sendOrderError!),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10)),
-            margin: const EdgeInsets.all(12),
-          ));
+
+          final isAlready = state.sendOrderError!
+              .toLowerCase()
+              .contains('already processed');
+
+          if (!isAlready) {
+            Navigator.of(context).pop();
+          }
+
+          ScaffoldMessenger.of(ctx).showSnackBar(
+            SnackBar(
+              content: Text(state.sendOrderError!),
+
+              backgroundColor:
+              isAlready ? Colors.orange : Colors.red,
+
+              behavior: SnackBarBehavior.floating,
+
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+
+              margin: const EdgeInsets.all(12),
+            ),
+          );
         }
       },
-      builder: (context, state) => Dialog(
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16)),
-        backgroundColor: Colors.white,
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text('Process Checklist Or Orders',
-                        style: MyStyles.boldText(
-                            size: 16,
-                            color: AppTheme.black_Color)),
-                  ),
-                  GestureDetector(
-                    onTap: state.sendOrderLoading
-                        ? null
-                        : () => Navigator.of(context).pop(),
-                    child: Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
+
+      builder: (context, state) {
+
+        return Dialog(
+
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+
+          backgroundColor: Colors.white,
+
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+
+              children: [
+
+                /// =========================
+                /// HEADER
+                /// =========================
+                Row(
+                  children: [
+
+                    Text(
+                      'Process Checklist Or Orders',
+
+                      style: MyStyles.boldText(
+                        size: 16,
+                        color: AppTheme.black_Color,
+                      ),
+                    ),
+
+                    const Spacer(),
+
+                    GestureDetector(
+
+                      onTap: state.sendOrderLoading
+                          ? null
+                          : () => Navigator.of(context).pop(),
+
+                      child: Container(
+                        width: 32,
+                        height: 32,
+
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
                             colors: [
                               Color(0xFFFF6B6B),
-                              Color(0xFFFF8E53)
-                            ]),
-                        borderRadius: BorderRadius.circular(8),
+                              Color(0xFFFF8E53),
+                            ],
+                          ),
+
+                          borderRadius:
+                          BorderRadius.circular(8),
+                        ),
+
+                        child: const Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: 18,
+                        ),
                       ),
-                      child: const Icon(Icons.close,
-                          color: Colors.white, size: 18),
                     ),
-                  ),
-                ],
-              ),
-              const Divider(height: 24),
-              Text('List Type',
+                  ],
+                ),
+
+                const Divider(height: 24),
+
+                /// =========================
+                /// LIST TYPE
+                /// =========================
+                Text(
+                  'List Type',
+
                   style: MyStyles.mediumText(
-                      size: 13, color: AppTheme.black_Color)),
-              const SizedBox(height: 8),
-              Container(
-                height: 48,
-                padding:
-                const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: _selectedListType.isNotEmpty
-                        ? AppTheme.btnColor
-                        : Colors.grey.shade300,
-                    width: _selectedListType.isNotEmpty
-                        ? 1.5
-                        : 1,
-                  ),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedListType,
-                    isExpanded: true,
-                    icon: const Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        color: AppTheme.graySubTitleColor),
-                    style: MyStyles.regularText(
-                        size: 14, color: AppTheme.black_Color),
-                    items: _listTypes
-                        .map((t) => DropdownMenuItem<String>(
-                      value: t['value']!,
-                      child: Text(t['label']!,
-                          style: MyStyles.regularText(
-                            size: 14,
-                            color: t['value']!.isEmpty
-                                ? AppTheme
-                                .graySubTitleColor
-                                : AppTheme.black_Color,
-                          )),
-                    ))
-                        .toList(),
-                    onChanged: (v) => setState(
-                            () => _selectedListType = v ?? ''),
+                    size: 13,
+                    color: AppTheme.black_Color,
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Text('Select Process Type',
-                  style: MyStyles.mediumText(
-                      size: 13, color: AppTheme.black_Color)),
-              const SizedBox(height: 8),
-              Container(
-                height: 48,
-                padding:
-                const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: _selectedProcessType.isNotEmpty
-                        ? AppTheme.btnColor
-                        : Colors.grey.shade300,
-                    width: _selectedProcessType.isNotEmpty
-                        ? 1.5
-                        : 1,
-                  ),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedProcessType,
-                    isExpanded: true,
-                    icon: const Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        color: AppTheme.graySubTitleColor),
-                    style: MyStyles.regularText(
-                        size: 14, color: AppTheme.black_Color),
-                    items: _processTypes
-                        .map((t) => DropdownMenuItem<String>(
-                      value: t['value']!,
-                      child: Text(t['label']!,
-                          style: MyStyles.regularText(
-                            size: 14,
-                            color: t['value']!.isEmpty
-                                ? AppTheme
-                                .graySubTitleColor
-                                : AppTheme.black_Color,
-                          )),
-                    ))
-                        .toList(),
-                    onChanged: (v) => setState(
-                            () => _selectedProcessType = v ?? ''),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  GestureDetector(
-                    onTap: state.sendOrderLoading
-                        ? null
-                        : () => Navigator.of(context).pop(),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 11),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFF6B6B),
-                        borderRadius: BorderRadius.circular(25),
-                      ),
-                      child: Text('Cancel',
-                          style: MyStyles.mediumText(
-                              size: 14, color: Colors.white)),
+
+                const SizedBox(height: 8),
+
+                Container(
+                  height: 48,
+
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 12),
+
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: _selectedListType.isNotEmpty
+                          ? AppTheme.btnColor
+                          : Colors.grey.shade300,
+
+                      width:
+                      _selectedListType.isNotEmpty
+                          ? 1.5
+                          : 1,
                     ),
+
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    onTap: state.sendOrderLoading
-                        ? null
-                        : () {
-                      if (_selectedListType.isEmpty) {
-                        ScaffoldMessenger.of(context)
-                            .showSnackBar(SnackBar(
-                          content: const Text(
-                              'Please select a list type'),
-                          backgroundColor: Colors.orange,
-                          behavior:
-                          SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(
-                              borderRadius:
-                              BorderRadius.circular(
-                                  10)),
-                          margin:
-                          const EdgeInsets.all(12),
-                        ));
-                        return;
-                      }
-                      if (_selectedProcessType.isEmpty) {
-                        ScaffoldMessenger.of(context)
-                            .showSnackBar(SnackBar(
-                          content: const Text(
-                              'Please select a process type'),
-                          backgroundColor: Colors.orange,
-                          behavior:
-                          SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(
-                              borderRadius:
-                              BorderRadius.circular(
-                                  10)),
-                          margin:
-                          const EdgeInsets.all(12),
-                        ));
-                        return;
-                      }
-                      context
-                          .read<CorrectionCubit>()
-                          .processOrder(
-                        schoolId: widget.schoolId,
-                        processType: _selectedProcessType,
-                        listType: _selectedListType,
-                        studentUuids: widget.studentUuids,
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 11),
-                      decoration: BoxDecoration(
-                        color: state.sendOrderLoading
-                            ? Colors.grey
-                            : AppTheme.btnColor,
-                        borderRadius: BorderRadius.circular(25),
+
+                  child: DropdownButtonHideUnderline(
+
+                    child: DropdownButton<String>(
+
+                      value: _selectedListType,
+
+                      isExpanded: true,
+
+                      icon: const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: AppTheme.graySubTitleColor,
                       ),
-                      child: state.sendOrderLoading
-                          ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white),
-                      )
-                          : Text('Confirm',
-                          style: MyStyles.mediumText(
+
+                      style: MyStyles.regularText(
+                        size: 14,
+                        color: AppTheme.black_Color,
+                      ),
+
+                      items: _listTypes
+                          .map(
+                            (t) => DropdownMenuItem<String>(
+
+                          value: t['value']!,
+
+                          child: Text(
+                            t['label']!,
+
+                            style: MyStyles.regularText(
                               size: 14,
-                              color: Colors.white)),
+
+                              color: t['value']!.isEmpty
+                                  ? AppTheme.graySubTitleColor
+                                  : AppTheme.black_Color,
+                            ),
+                          ),
+                        ),
+                      )
+                          .toList(),
+
+                      onChanged: (v) {
+
+                        print("Selected List Type => $v");
+
+                        setState(() {
+                          _selectedListType = v ?? '';
+                        });
+                      },
                     ),
                   ),
-                ],
-              ),
-            ],
+                ),
+
+                const SizedBox(height: 16),
+
+                /// =========================
+                /// PROCESS TYPE
+                /// =========================
+                Text(
+                  'Select Process Type',
+
+                  style: MyStyles.mediumText(
+                    size: 13,
+                    color: AppTheme.black_Color,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                Container(
+                  height: 48,
+
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 12),
+
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: _selectedProcessType.isNotEmpty
+                          ? AppTheme.btnColor
+                          : Colors.grey.shade300,
+
+                      width:
+                      _selectedProcessType.isNotEmpty
+                          ? 1.5
+                          : 1,
+                    ),
+
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+
+                  child: DropdownButtonHideUnderline(
+
+                    child: DropdownButton<String>(
+
+                      value: _selectedProcessType,
+
+                      isExpanded: true,
+
+                      icon: const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: AppTheme.graySubTitleColor,
+                      ),
+
+                      style: MyStyles.regularText(
+                        size: 14,
+                        color: AppTheme.black_Color,
+                      ),
+
+                      items: _processTypes
+                          .map(
+                            (t) => DropdownMenuItem<String>(
+
+                          value: t['value']!,
+
+                          child: Text(
+                            t['label']!,
+
+                            style: MyStyles.regularText(
+                              size: 14,
+
+                              color: t['value']!.isEmpty
+                                  ? AppTheme.graySubTitleColor
+                                  : AppTheme.black_Color,
+                            ),
+                          ),
+                        ),
+                      )
+                          .toList(),
+
+                      onChanged: (v) {
+
+                        print("Selected Process Type => $v");
+
+                        setState(() {
+                          _selectedProcessType = v ?? '';
+                        });
+                      },
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                /// =========================
+                /// BUTTONS
+                /// =========================
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+
+                  children: [
+
+                    /// CANCEL BUTTON
+                    GestureDetector(
+
+                      onTap: state.sendOrderLoading
+                          ? null
+                          : () => Navigator.of(context).pop(),
+
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 11,
+                        ),
+
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF6B6B),
+
+                          borderRadius:
+                          BorderRadius.circular(25),
+                        ),
+
+                        child: Text(
+                          'Cancel',
+
+                          style: MyStyles.mediumText(
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 12),
+
+                    /// CONFIRM BUTTON
+                    GestureDetector(
+
+                      onTap: state.sendOrderLoading
+                          ? null
+                          : () async {
+
+                        print("=========== PROCESS ORDER ===========");
+
+                        print("schoolId => ${widget.schoolId}");
+
+                        print("studentUuids => ${widget.studentUuids}");
+
+                        print("processType => $_selectedProcessType");
+
+                        print("listType => $_selectedListType");
+
+                        /// NO STUDENT
+                        if (widget.studentUuids.isEmpty) {
+
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(
+                            SnackBar(
+                              content: const Text(
+                                'No students selected',
+                              ),
+
+                              backgroundColor: Colors.red,
+
+                              behavior:
+                              SnackBarBehavior.floating,
+
+                              shape: RoundedRectangleBorder(
+                                borderRadius:
+                                BorderRadius.circular(10),
+                              ),
+
+                              margin:
+                              const EdgeInsets.all(12),
+                            ),
+                          );
+
+                          return;
+                        }
+
+                        /// NO LIST TYPE
+                        if (_selectedListType.isEmpty) {
+
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(
+                            SnackBar(
+                              content: const Text(
+                                'Please select a list type',
+                              ),
+
+                              backgroundColor: Colors.orange,
+
+                              behavior:
+                              SnackBarBehavior.floating,
+
+                              shape: RoundedRectangleBorder(
+                                borderRadius:
+                                BorderRadius.circular(10),
+                              ),
+
+                              margin:
+                              const EdgeInsets.all(12),
+                            ),
+                          );
+
+                          return;
+                        }
+
+                        /// NO PROCESS TYPE
+                        if (_selectedProcessType.isEmpty) {
+
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(
+                            SnackBar(
+                              content: const Text(
+                                'Please select a process type',
+                              ),
+
+                              backgroundColor: Colors.orange,
+
+                              behavior:
+                              SnackBarBehavior.floating,
+
+                              shape: RoundedRectangleBorder(
+                                borderRadius:
+                                BorderRadius.circular(10),
+                              ),
+
+                              margin:
+                              const EdgeInsets.all(12),
+                            ),
+                          );
+
+                          return;
+                        }
+
+                        /// API CALL
+                        await context
+                            .read<CorrectionCubit>()
+                            .processOrder(
+
+                          schoolId: widget.schoolId,
+
+                          processType:
+                          _selectedProcessType,
+
+                          listType:
+                          _selectedListType,
+
+                          studentUuids:
+                          widget.studentUuids,
+                        );
+                      },
+
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 11,
+                        ),
+
+                        decoration: BoxDecoration(
+                          color: state.sendOrderLoading
+                              ? Colors.grey
+                              : AppTheme.btnColor,
+
+                          borderRadius:
+                          BorderRadius.circular(25),
+                        ),
+
+                        child: state.sendOrderLoading
+
+                            ? const SizedBox(
+                          width: 18,
+                          height: 18,
+
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+
+                            : Text(
+                          'Confirm',
+
+                          style: MyStyles.mediumText(
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
