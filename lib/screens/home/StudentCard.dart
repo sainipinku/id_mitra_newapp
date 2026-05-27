@@ -489,10 +489,8 @@ class _StudentCardState extends State<StudentCard> {
                           width: 2,
                         ),
                       ),
-                      child: Icon(
-                        (studentDetailsData.profilePhotoUrl != null && studentDetailsData.profilePhotoUrl!.isNotEmpty && !studentDetailsData.profilePhotoUrl!.contains('ui-avatars.com'))
-                            ? Icons.preview
-                            : Icons.camera_alt,
+                      child: const Icon(
+                        Icons.camera_alt,
                         size: 12,
                         color: Colors.white,
                       ),

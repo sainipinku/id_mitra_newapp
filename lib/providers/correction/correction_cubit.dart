@@ -431,9 +431,15 @@ class CorrectionCubit extends Cubit<CorrectionState> {
       };
       final response = await _api.postRequest(body, url);
       if (response == null) {
-        emit(state.copyWith(
-            sendOrderLoading: false,
-            sendOrderError: 'Failed to process order'));
+        // API unreachable (network error caught inside ApiManager) — save offline
+        await _saveChecklistOffline(
+          schoolId: schoolId,
+          processType: processType,
+          listType: listType,
+          cardType: cardType,
+          cardFor: cardFor,
+          selectedUuids: selectedUuids,
+        );
         return;
       }
       final json = jsonDecode(response.body);
@@ -444,6 +450,7 @@ class CorrectionCubit extends Cubit<CorrectionState> {
           sendOrderMessage: json['message'] ?? 'Correction list created successfully!',
           selectedStudentIds: {},
         ));
+        fetchCorrectionStudents(schoolId: schoolId);
       } else {
         emit(state.copyWith(
           sendOrderLoading: false,
@@ -451,76 +458,87 @@ class CorrectionCubit extends Cubit<CorrectionState> {
         ));
       }
     } catch (e) {
-      if (e is SocketException || e is http.ClientException) {
-        await _localDS.savePendingChecklist(
-          schoolId: schoolId,
-          processType: processType,
-          listType: listType,
-          cardType: cardType,
-          cardFor: cardFor,
-          studentUuids: selectedUuids,
-        );
-
-        //  Move students to Correction List locally
-        final studentDetails = await _studentLocalDS.getStudentsByUuids(selectedUuids);
-        final correctionItems = studentDetails.map((s) {
-          return CorrectionStudentItem(
-            id: s.id ?? 0,
-            uuid: s.uuid,
-            status: 'pending',
-            remark: 'Offline Processed',
-            student: CorrectionStudentData(
-              id: s.id ?? 0,
-              uuid: s.uuid,
-              schoolId: s.schoolId,
-              name: s.name,
-              email: s.email?.toString(),
-              phone: s.phone?.toString(),
-              regNo: s.regNo,
-              rollNo: s.rollNo,
-              admissionNo: s.admissionNo,
-              dob: s.dob,
-              address: s.address,
-              fatherName: s.fatherName,
-              fatherPhone: s.fatherPhone,
-              motherName: s.motherName,
-              motherPhone: s.motherPhone,
-              schoolClassId: s.schoolClassId,
-              schoolClassSectionId: s.schoolClassSectionId,
-              photoUrl: s.offlinePhotoPath ?? s.profilePhotoUrl,
-              profilePhotoUrl: s.profilePhotoUrl,
-              studentClass: s.datumClass != null
-                  ? CorrectionStudentClass(
-                id: s.datumClass!.id ?? 0,
-                nameWithPrefix: s.datumClass!.nameWithprefix,
-              )
-                  : null,
-              section: s.section != null
-                  ? CorrectionStudentSection(
-                id: s.section!.id ?? 0,
-                name: s.section!.name,
-              )
-                  : null,
-            ),
-          );
-        }).toList();
-
-        await _localDS.insertCorrectionStudents(correctionItems, schoolId);
-
-        emit(state.copyWith(
-          sendOrderLoading: false,
-          sendOrderSuccess: true,
-          sendOrderMessage: 'Saved offline. Students added to Correction List locally.',
-          selectedStudentIds: {},
-        ));
-
-        // Refresh correction list state
-        fetchCorrectionStudents(schoolId: schoolId);
-      } else {
-        emit(state.copyWith(
-            sendOrderLoading: false, sendOrderError: e.toString()));
-      }
+      await _saveChecklistOffline(
+        schoolId: schoolId,
+        processType: processType,
+        listType: listType,
+        cardType: cardType,
+        cardFor: cardFor,
+        selectedUuids: selectedUuids,
+      );
     }
+  }
+
+  Future<void> _saveChecklistOffline({
+    required String schoolId,
+    required String processType,
+    required String listType,
+    required String cardType,
+    required List<String> cardFor,
+    required List<String> selectedUuids,
+  }) async {
+    await _localDS.savePendingChecklist(
+      schoolId: schoolId,
+      processType: processType,
+      listType: listType,
+      cardType: cardType,
+      cardFor: cardFor,
+      studentUuids: selectedUuids,
+    );
+
+    final studentDetails = await _studentLocalDS.getStudentsByUuids(selectedUuids);
+    final correctionItems = studentDetails.map((s) {
+      return CorrectionStudentItem(
+        id: s.id ?? 0,
+        uuid: s.uuid,
+        status: 'pending',
+        remark: 'Offline Processed',
+        student: CorrectionStudentData(
+          id: s.id ?? 0,
+          uuid: s.uuid,
+          schoolId: s.schoolId,
+          name: s.name,
+          email: s.email?.toString(),
+          phone: s.phone?.toString(),
+          regNo: s.regNo,
+          rollNo: s.rollNo,
+          admissionNo: s.admissionNo,
+          dob: s.dob,
+          address: s.address,
+          fatherName: s.fatherName,
+          fatherPhone: s.fatherPhone,
+          motherName: s.motherName,
+          motherPhone: s.motherPhone,
+          schoolClassId: s.schoolClassId,
+          schoolClassSectionId: s.schoolClassSectionId,
+          photoUrl: s.offlinePhotoPath ?? s.profilePhotoUrl,
+          profilePhotoUrl: s.profilePhotoUrl,
+          studentClass: s.datumClass != null
+              ? CorrectionStudentClass(
+            id: s.datumClass!.id ?? 0,
+            nameWithPrefix: s.datumClass!.nameWithprefix,
+          )
+              : null,
+          section: s.section != null
+              ? CorrectionStudentSection(
+            id: s.section!.id ?? 0,
+            name: s.section!.name,
+          )
+              : null,
+        ),
+      );
+    }).toList();
+
+    await _localDS.insertCorrectionStudents(correctionItems, schoolId);
+
+    emit(state.copyWith(
+      sendOrderLoading: false,
+      sendOrderSuccess: true,
+      sendOrderMessage: 'Saved offline. Students added to Correction List locally.',
+      selectedStudentIds: {},
+    ));
+
+    fetchCorrectionStudents(schoolId: schoolId);
   }
 
   Future<void> syncPendingChecklists() async {
