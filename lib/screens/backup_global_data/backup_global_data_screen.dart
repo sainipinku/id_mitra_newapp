@@ -1,32 +1,8 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
-import 'package:idmitra/api_mamanger/api_manager.dart';
-import 'package:idmitra/api_mamanger/config.dart';
 import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/components/my_font_weight.dart';
-import 'package:idmitra/local_db/global_backup_local_ds.dart';
-
-// Entity config: [apiResponseKey, dbEntityType, schoolIdField]
-const _entityCfg = [
-  ['schools', 'school', 'id'],
-  ['students', 'student', 'school_id'],
-  ['orders', 'order', 'school_id'],
-  ['staff_orders', 'staff_order', 'school_id'],
-  ['student_corrections', 'student_correction', 'school_id'],
-  ['staff_corrections', 'staff_correction', 'school_id'],
-];
-
-const _entityDisplayNames = {
-  'schools': 'Schools',
-  'students': 'Students',
-  'orders': 'Orders',
-  'staff_orders': 'Staff Orders',
-  'student_corrections': 'Student Corrections',
-  'staff_corrections': 'Staff Corrections',
-};
 
 class BackupGlobalDataScreen extends StatefulWidget {
   const BackupGlobalDataScreen({super.key});
@@ -44,13 +20,6 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
   bool _hasVideoError = false;
   bool _showControls = true;
   Timer? _hideControlsTimer;
-
-  bool _isSyncing = false;
-  int _savedRecords = 0;
-  int _totalRecords = 0;
-  String _syncStatusLabel = '';
-  DateTime? _lastSyncedAt;
-  String? _syncError;
 
   static const String _videoUrl =
       'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4';
@@ -132,213 +101,6 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
-  }
-
-  // ── Internet check ────────────────────────────────────────────────────────
-  Future<bool> _isConnected() async {
-    try {
-      final result = await InternetAddress.lookup('google.com')
-          .timeout(const Duration(seconds: 5));
-      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // ── Offline: global_backup se stats load karo ─────────────────────────────
-  Future<void> _loadOfflineBackup() async {
-    try {
-      final localDS = GlobalBackupLocalDS();
-      final total = await localDS.getTotalBackupCount();
-      final lastSync = await localDS.getLastSyncedAt();
-
-      if (total == 0) {
-        setState(() {
-          _isSyncing = false;
-          _syncError = 'Koi backup nahi mila. Pehle online ho kar sync karo.';
-        });
-        return;
-      }
-
-      setState(() {
-        _isSyncing = false;
-        _savedRecords = total;
-        _totalRecords = total;
-        _lastSyncedAt = lastSync;
-      });
-    } catch (_) {
-      setState(() {
-        _isSyncing = false;
-        _syncError = 'Offline backup load karne mein error aaya.';
-      });
-    }
-  }
-
-  // Retries on 429 with a live countdown, max 5 attempts
-  Future<dynamic> _getWithRetry(String url) async {
-    const maxRetries = 5;
-    for (int attempt = 0; attempt <= maxRetries; attempt++) {
-      final response = await ApiManager().getRequest(url);
-      if (response != null && response.statusCode == 429) {
-        if (attempt < maxRetries) {
-          for (int i = 5; i > 0; i--) {
-            if (!mounted) return null;
-            setState(() => _syncStatusLabel = 'Server busy, retrying in ${i}s...');
-            await Future.delayed(const Duration(seconds: 1));
-          }
-          continue;
-        }
-      }
-      return response;
-    }
-    return null;
-  }
-
-  Future<void> _syncBackup() async {
-    setState(() {
-      _isSyncing = true;
-      _syncError = null;
-      _savedRecords = 0;
-      _totalRecords = 0;
-      _syncStatusLabel = 'Checking internet...';
-    });
-
-    // ── Internet check ─────────────────────────────────────────────────────
-    final online = await _isConnected();
-    if (!online) {
-      setState(() => _syncStatusLabel = 'Loading offline backup data...');
-      await _loadOfflineBackup();
-      return;
-    }
-
-    setState(() => _syncStatusLabel = 'Connecting to server...');
-
-    try {
-      // ── Fetch page 1 of all entities ──
-      final response = await _getWithRetry(
-        Config.url(Routes.getPartnerGlobalData()),
-      );
-
-      if (response == null) {
-        setState(() {
-          _isSyncing = false;
-          _syncError = 'No internet connection. Please try again.';
-        });
-        return;
-      }
-      if (response.statusCode != 200) {
-        setState(() {
-          _isSyncing = false;
-          _syncError = 'Server error (${response.statusCode}). Please try again.';
-        });
-        return;
-      }
-
-      final body = jsonDecode(response.body) as Map<String, dynamic>;
-      if (body['success'] != true) {
-        setState(() {
-          _isSyncing = false;
-          _syncError = body['message'] ?? 'Server returned an error.';
-        });
-        return;
-      }
-
-      final data = body['data'] as Map<String, dynamic>;
-
-      // ── Calculate total records from pagination ──
-      int total = 0;
-      final paginationInfo = <String, Map<String, dynamic>>{};
-      for (final cfg in _entityCfg) {
-        final apiKey = cfg[0];
-        final entityData = data[apiKey] as Map<String, dynamic>?;
-        if (entityData != null) {
-          paginationInfo[apiKey] = entityData;
-          total += (entityData['total'] as int?) ??
-              (entityData['data'] as List).length;
-        }
-      }
-
-      if (mounted) setState(() => _totalRecords = total);
-
-      // ── Save page 1 data ──
-      final localDS = GlobalBackupLocalDS();
-      for (final cfg in _entityCfg) {
-        final apiKey = cfg[0];
-        final dbType = cfg[1];
-        final schoolIdKey = cfg[2];
-        final entityData = data[apiKey] as Map<String, dynamic>?;
-        if (entityData == null) continue;
-
-        final items = entityData['data'] as List;
-        if (items.isNotEmpty) {
-          if (mounted) {
-            setState(() => _syncStatusLabel =
-                'Saving ${_entityDisplayNames[apiKey]}...');
-          }
-          await localDS.saveEntities(dbType, items, schoolIdKey: schoolIdKey);
-          if (mounted) setState(() => _savedRecords += items.length);
-        }
-      }
-
-      // ── Fetch and save remaining pages ──
-      for (final cfg in _entityCfg) {
-        final apiKey = cfg[0];
-        final dbType = cfg[1];
-        final schoolIdKey = cfg[2];
-        final entityPagination = paginationInfo[apiKey];
-        if (entityPagination == null) continue;
-
-        final lastPage = entityPagination['last_page'] as int? ?? 1;
-        for (int page = 2; page <= lastPage; page++) {
-          if (mounted) {
-            setState(() => _syncStatusLabel =
-                'Fetching ${_entityDisplayNames[apiKey]} (page $page/$lastPage)...');
-          }
-
-          final pageResponse = await _getWithRetry(
-            Config.url(Routes.getPartnerGlobalDataPage(apiKey, page)),
-          );
-
-          if (pageResponse == null || pageResponse.statusCode != 200) continue;
-
-          final pageBody =
-              jsonDecode(pageResponse.body) as Map<String, dynamic>;
-          if (pageBody['success'] != true) continue;
-
-          final pageEntityData =
-              (pageBody['data'] as Map<String, dynamic>)[apiKey]
-                  as Map<String, dynamic>?;
-          if (pageEntityData == null) continue;
-
-          final pageItems = pageEntityData['data'] as List;
-          if (pageItems.isNotEmpty) {
-            await localDS.saveEntities(dbType, pageItems,
-                schoolIdKey: schoolIdKey);
-            if (mounted) setState(() => _savedRecords += pageItems.length);
-          }
-        }
-      }
-
-      // ── Backup complete — home_cache populate karo taaki screens offline kaam karein
-      if (mounted) {
-        setState(() => _syncStatusLabel = 'Finalizing offline cache...');
-      }
-      await localDS.populateSchoolsHomeCache();
-
-      if (mounted) {
-        setState(() {
-          _isSyncing = false;
-          _lastSyncedAt = DateTime.now();
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _isSyncing = false;
-          _syncError = 'Unexpected error. Please try again.';
-        });
-      }
-    }
   }
 
   @override
@@ -680,96 +442,44 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
   }
 
   Widget _buildSyncProgressBar() {
-    double? value;
-    Color barColor = AppTheme.MainColor;
-
-    if (_isSyncing) {
-      if (_totalRecords > 0) {
-        value = (_savedRecords / _totalRecords).clamp(0.0, 1.0);
-      } else {
-        value = null; // indeterminate until we know total
-      }
-    } else if (_syncError != null) {
-      value = 0.0;
-      barColor = Colors.redAccent;
-    } else if (_lastSyncedAt != null) {
-      value = 1.0;
-      barColor = Colors.green;
-    } else {
-      value = 0.0;
-    }
-
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
       child: LinearProgressIndicator(
-        value: value,
+        value: 0.0,
         minHeight: 7,
-        backgroundColor: barColor.withOpacity(0.15),
-        valueColor: AlwaysStoppedAnimation<Color>(barColor),
+        backgroundColor: AppTheme.MainColor.withOpacity(0.15),
+        valueColor: AlwaysStoppedAnimation<Color>(AppTheme.MainColor),
       ),
     );
   }
 
   Widget _buildSyncStatusText() {
-    String text;
-    Color color = AppTheme.black_Color;
-
-    if (_syncError != null) {
-      text = _syncError!;
-      color = Colors.redAccent;
-    } else if (_isSyncing) {
-      text = _totalRecords > 0
-          ? '$_syncStatusLabel ($_savedRecords / $_totalRecords)'
-          : _syncStatusLabel;
-    } else if (_lastSyncedAt != null) {
-      final h = _lastSyncedAt!.hour.toString().padLeft(2, '0');
-      final m = _lastSyncedAt!.minute.toString().padLeft(2, '0');
-      final d = '${_lastSyncedAt!.day}/${_lastSyncedAt!.month}/${_lastSyncedAt!.year}';
-      text = 'Offline backup ready: $_savedRecords records ($d $h:$m)';
-      color = Colors.green.shade700;
-    } else {
-      text = "Tap 'Sync Backup' to download all data";
-    }
-
     return Text(
-      text,
-      style: MyStyles.regularText(size: 13, color: color),
+      "Tap 'Sync Backup' to download all data",
+      style: MyStyles.regularText(size: 13, color: AppTheme.black_Color),
       textAlign: TextAlign.center,
     );
   }
 
   Widget _buildSyncButton() {
-    return GestureDetector(
-      onTap: _isSyncing ? null : _syncBackup,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: _isSyncing
-              ? AppTheme.MainColor.withOpacity(0.6)
-              : AppTheme.MainColor,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (_isSyncing)
-              const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                    color: Colors.white, strokeWidth: 2.5),
-              )
-            else
-              const Icon(Icons.cloud_download_rounded,
-                  color: Colors.white, size: 20),
-            const SizedBox(width: 10),
-            Text(
-              _isSyncing ? 'Syncing...' : 'Sync Backup',
-              style: MyStyles.boldText(size: 15, color: Colors.white),
-            ),
-          ],
-        ),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(
+        color: AppTheme.MainColor,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.cloud_download_rounded,
+              color: Colors.white, size: 20),
+          const SizedBox(width: 10),
+          Text(
+            'Sync Backup',
+            style: MyStyles.boldText(size: 15, color: Colors.white),
+          ),
+        ],
       ),
     );
   }

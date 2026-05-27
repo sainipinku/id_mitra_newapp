@@ -88,22 +88,6 @@ class Routes {
   static String updateOrderStatus(String uuid, {String schoolId = ''}) =>
       schoolId.isNotEmpty ? "auth/school/$schoolId/orders/$uuid/status" : "auth/partner/orders/$uuid/status";
   static String getOrderStatistics() => "auth/partner/orders/statistics/summary";
-  static String getPartnerGlobalSummary() => "auth/partner/global/summary";
-
-  static String getPartnerGlobalData({int perPage = 25}) {
-    const inc = 'schools,students,orders,staff_orders,student_corrections,staff_corrections';
-    return 'auth/partner/global/data?include=$inc'
-        '&schools_per_page=$perPage'
-        '&students_per_page=$perPage'
-        '&orders_per_page=$perPage'
-        '&staff_orders_per_page=$perPage'
-        '&student_corrections_per_page=$perPage'
-        '&staff_corrections_per_page=$perPage';
-  }
-
-  static String getPartnerGlobalDataPage(String entityType, int page, {int perPage = 25}) {
-    return 'auth/partner/global/data?include=$entityType&${entityType}_per_page=$perPage&${entityType}_page=$page';
-  }
   static String getSchoolDashboard() => "auth/school/dashboard/stats";
   static String getSubCategoryById(String stateID) => "common/cities/$stateID";
   static String getSubCategoryProductById(String subCatId) => "product/subcategory/$subCatId";
