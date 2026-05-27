@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:idmitra/api_mamanger/api_manager.dart';
@@ -133,6 +134,46 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
     return '$m:$s';
   }
 
+  // ── Internet check ────────────────────────────────────────────────────────
+  Future<bool> _isConnected() async {
+    try {
+      final result = await InternetAddress.lookup('google.com')
+          .timeout(const Duration(seconds: 5));
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ── Offline: global_backup se stats load karo ─────────────────────────────
+  Future<void> _loadOfflineBackup() async {
+    try {
+      final localDS = GlobalBackupLocalDS();
+      final total = await localDS.getTotalBackupCount();
+      final lastSync = await localDS.getLastSyncedAt();
+
+      if (total == 0) {
+        setState(() {
+          _isSyncing = false;
+          _syncError = 'Koi backup nahi mila. Pehle online ho kar sync karo.';
+        });
+        return;
+      }
+
+      setState(() {
+        _isSyncing = false;
+        _savedRecords = total;
+        _totalRecords = total;
+        _lastSyncedAt = lastSync;
+      });
+    } catch (_) {
+      setState(() {
+        _isSyncing = false;
+        _syncError = 'Offline backup load karne mein error aaya.';
+      });
+    }
+  }
+
   // Retries on 429 with a live countdown, max 5 attempts
   Future<dynamic> _getWithRetry(String url) async {
     const maxRetries = 5;
@@ -159,8 +200,18 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
       _syncError = null;
       _savedRecords = 0;
       _totalRecords = 0;
-      _syncStatusLabel = 'Connecting to server...';
+      _syncStatusLabel = 'Checking internet...';
     });
+
+    // ── Internet check ─────────────────────────────────────────────────────
+    final online = await _isConnected();
+    if (!online) {
+      setState(() => _syncStatusLabel = 'Loading offline backup data...');
+      await _loadOfflineBackup();
+      return;
+    }
+
+    setState(() => _syncStatusLabel = 'Connecting to server...');
 
     try {
       // ── Fetch page 1 of all entities ──
@@ -267,6 +318,12 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
           }
         }
       }
+
+      // ── Backup complete — home_cache populate karo taaki screens offline kaam karein
+      if (mounted) {
+        setState(() => _syncStatusLabel = 'Finalizing offline cache...');
+      }
+      await localDS.populateSchoolsHomeCache();
 
       if (mounted) {
         setState(() {
@@ -667,7 +724,8 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
     } else if (_lastSyncedAt != null) {
       final h = _lastSyncedAt!.hour.toString().padLeft(2, '0');
       final m = _lastSyncedAt!.minute.toString().padLeft(2, '0');
-      text = 'Synced: $_savedRecords records saved at $h:$m';
+      final d = '${_lastSyncedAt!.day}/${_lastSyncedAt!.month}/${_lastSyncedAt!.year}';
+      text = 'Offline backup ready: $_savedRecords records ($d $h:$m)';
       color = Colors.green.shade700;
     } else {
       text = "Tap 'Sync Backup' to download all data";
