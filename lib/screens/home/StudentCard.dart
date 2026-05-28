@@ -370,10 +370,10 @@ class _StudentCardState extends State<StudentCard> {
 
     try {
       final schoolState = context.watch<SchoolCubit>().state;
-
+    
       final schoolId =
           widget.schoolIntId ?? int.tryParse(widget.schoolId);
-
+        print("Student list image ${studentDetailsData.profilePhotoUrl}");
       if (schoolId != null) {
         if (schoolState.imageShapeMap.containsKey(schoolId)) {
           resolvedShape = schoolState.imageShapeMap[schoolId];

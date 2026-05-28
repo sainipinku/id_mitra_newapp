@@ -119,5 +119,13 @@ class Routes {
     return url;
   }
 
+  static String getGlobalSummary() => "auth/partner/global/summary";
+  static String getGlobalData({
+    String include = 'schools,students,orders,staff_orders,student_corrections,staff_corrections',
+    int schoolsPerPage = 25,
+    int studentsPerPage = 25,
+    int ordersPerPage = 25,
+  }) =>
+      "auth/partner/global/data?include=$include&schools_per_page=$schoolsPerPage&students_per_page=$studentsPerPage&orders_per_page=$ordersPerPage";
 }
 

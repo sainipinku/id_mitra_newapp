@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
 import 'package:idmitra/api_mamanger/config.dart';
@@ -28,7 +29,27 @@ class StudentFormDataCubit extends Cubit<StudentFormDataState> {
       return;
     }
 
+    // No local data — check internet before hitting API
+    final hasInternet = await _hasInternet();
+    if (!hasInternet) {
+      // Offline with no cached data: emit empty model so form still renders
+      emit(StudentFormDataState(
+        loading: false,
+        data: StudentFormDataModel(sessions: [], classes: [], houses: []),
+      ));
+      return;
+    }
+
     await _syncFromApi(schoolId, emitStates: true);
+  }
+
+  Future<bool> _hasInternet() async {
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<StudentFormDataModel?> _loadFromLocal(String schoolId) async {

@@ -144,14 +144,28 @@ class SchoolCubit extends Cubit<SchoolState> {
       );
 
       if (response == null) {
-        print('SchoolCubit sync: no response');
+        print('SchoolCubit sync: no response — trying backup local DB');
         if (emitStates) {
-          emit(state.copyWith(
-            loading: false,
-            isSyncing: false,
-            isPaginationLoading: false,
-            error: 'No response from server',
-          ));
+          // Try loading from the `schools` table saved by backup sync
+          final backupSchools = await _loadFromBackupTable(search: search);
+          if (backupSchools.isNotEmpty) {
+            emit(state.copyWith(
+              loading: false,
+              isSyncing: false,
+              isPaginationLoading: false,
+              students: backupSchools,
+              hasMore: false,
+              error: null,
+            ));
+            print('SchoolCubit: loaded ${backupSchools.length} schools from backup table');
+          } else {
+            emit(state.copyWith(
+              loading: false,
+              isSyncing: false,
+              isPaginationLoading: false,
+              error: 'No response from server',
+            ));
+          }
         } else {
           emit(state.copyWith(isSyncing: false));
         }
@@ -323,6 +337,29 @@ class SchoolCubit extends Cubit<SchoolState> {
       }
     } catch (e) {
       debugPrint('fetchAndApplyImageShape error: $e');
+    }
+  }
+
+  /// Load schools from the `schools` table populated by backup sync
+  Future<List<SchoolDetailsModel>> _loadFromBackupTable({String search = ''}) async {
+    try {
+      final db = await DBHelper.db;
+      final rows = await db.query('schools', orderBy: 'id DESC');
+      final List<SchoolDetailsModel> result = [];
+      for (final row in rows) {
+        try {
+          final map = jsonDecode(row['raw_json'] as String) as Map<String, dynamic>;
+          final school = SchoolDetailsModel.fromJson(map);
+          if (search.isEmpty ||
+              (school.name ?? '').toLowerCase().contains(search.toLowerCase())) {
+            result.add(school);
+          }
+        } catch (_) {}
+      }
+      return result;
+    } catch (e) {
+      print('SchoolCubit _loadFromBackupTable error: $e');
+      return [];
     }
   }
 }

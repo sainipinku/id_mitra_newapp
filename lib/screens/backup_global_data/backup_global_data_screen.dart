@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:video_player/video_player.dart';
 import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/components/my_font_weight.dart';
+import 'package:idmitra/providers/global_summary/global_data_cubit.dart';
+import 'package:idmitra/providers/global_summary/global_summary_state.dart';
 
 class BackupGlobalDataScreen extends StatefulWidget {
   const BackupGlobalDataScreen({super.key});
@@ -114,77 +117,82 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: _buildAppBar(),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── "How to Upload Image" label ──
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 4,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        color: AppTheme.MainColor,
-                        borderRadius: BorderRadius.circular(4),
+    return BlocProvider(
+      create: (_) => GlobalDataCubit(),
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: _buildAppBar(),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 4,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: AppTheme.MainColor,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      'How to Upload Image',
-                      style: MyStyles.boldText(
-                          size: 16, color: AppTheme.black_Color),
-                    ),
-                  ],
+                      const SizedBox(width: 10),
+                      Text(
+                        'How to Upload Image',
+                        style: MyStyles.boldText(size: 16, color: AppTheme.black_Color),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
 
-              // ── Full-width video player ──
-              SizedBox(
-                height: MediaQuery.of(context).size.height * 0.45,
-                width: double.infinity,
-                child: GestureDetector(
-                  onTap: _isVideoInitialized ? _onVideoTap : null,
-                  child: _hasVideoError
-                      ? _buildErrorWidget()
-                      : _isVideoInitialized
-                          ? _buildPlayer()
-                          : _buildLoading(),
+                // Video player
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.45,
+                  width: double.infinity,
+                  child: GestureDetector(
+                    onTap: _isVideoInitialized ? _onVideoTap : null,
+                    child: _hasVideoError
+                        ? _buildErrorWidget()
+                        : _isVideoInitialized
+                            ? _buildPlayer()
+                            : _buildLoading(),
+                  ),
                 ),
-              ),
 
-              // ── Sync section ──
-              const SizedBox(height: 24),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                child: Column(
-                  children: [
-                    _buildDotsRow(),
-                    const SizedBox(height: 14),
-                    _buildSyncProgressBar(),
-                    const SizedBox(height: 10),
-                    _buildSyncStatusText(),
-                    const SizedBox(height: 20),
-                    _buildSyncButton(),
-                  ],
+                const SizedBox(height: 24),
+
+                // Sync section — driven by BLoC
+                BlocBuilder<GlobalDataCubit, GlobalSummaryState>(
+                  builder: (context, state) {
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      child: Column(
+                        children: [
+                          _buildDotsRow(),
+                          const SizedBox(height: 14),
+                          _buildSyncProgressBar(state),
+                          const SizedBox(height: 10),
+                          _buildSyncStatusText(state),
+                          const SizedBox(height: 20),
+                          _buildSyncButton(context, state),
+                        ],
+                      ),
+                    );
+                  },
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  // ─────────────────────────────────────────────
-  // AppBar
-  // ─────────────────────────────────────────────
+  // ─── AppBar ───────────────────────────────────────────────────────────────
+
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       backgroundColor: Colors.white,
@@ -204,8 +212,7 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
             ),
             child: const Padding(
               padding: EdgeInsets.all(5.0),
-              child: Icon(Icons.arrow_back_ios_new_rounded,
-                  size: 18, color: Colors.black87),
+              child: Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: Colors.black87),
             ),
           ),
         ),
@@ -214,12 +221,13 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
     );
   }
 
+  // ─── Video widgets ────────────────────────────────────────────────────────
+
   Widget _buildLoading() {
     return Container(
       color: Colors.black,
       child: Center(
-        child: CircularProgressIndicator(
-            color: AppTheme.MainColor, strokeWidth: 3),
+        child: CircularProgressIndicator(color: AppTheme.MainColor, strokeWidth: 3),
       ),
     );
   }
@@ -320,9 +328,7 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
                           ],
                         ),
                         child: Icon(
-                          isPlaying
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
+                          isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                           color: Colors.white,
                           size: 34,
                         ),
@@ -341,21 +347,16 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
                         children: [
                           Text(_fmt(position),
                               style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600)),
+                                  color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
                           Text(_fmt(duration),
-                              style: const TextStyle(
-                                  color: Colors.white70, fontSize: 12)),
+                              style: const TextStyle(color: Colors.white70, fontSize: 12)),
                         ],
                       ),
                       SliderTheme(
                         data: SliderThemeData(
                           trackHeight: 3,
-                          thumbShape: const RoundSliderThumbShape(
-                              enabledThumbRadius: 7),
-                          overlayShape: const RoundSliderOverlayShape(
-                              overlayRadius: 14),
+                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                          overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
                           activeTrackColor: AppTheme.MainColor,
                           inactiveTrackColor: Colors.white.withOpacity(0.3),
                           thumbColor: Colors.white,
@@ -365,8 +366,7 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
                           value: progress,
                           onChanged: (val) {
                             _videoController.seekTo(Duration(
-                              milliseconds:
-                                  (val * duration.inMilliseconds).toInt(),
+                              milliseconds: (val * duration.inMilliseconds).toInt(),
                             ));
                           },
                         ),
@@ -397,9 +397,8 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
     );
   }
 
-  // ─────────────────────────────────────────────
-  // Sync section widgets
-  // ─────────────────────────────────────────────
+  // ─── Sync section widgets ─────────────────────────────────────────────────
+
   Widget _buildDotsRow() {
     const int totalDots = 14;
     const int trailLength = 5;
@@ -407,8 +406,7 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(Icons.cloud_sync_outlined,
-            color: AppTheme.graySubTitleColor, size: 28),
+        Icon(Icons.cloud_sync_outlined, color: AppTheme.graySubTitleColor, size: 28),
         const SizedBox(width: 8),
         ...List.generate(totalDots, (index) {
           final dist = (_activeDotIndex - index) % totalDots;
@@ -419,8 +417,7 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
             dotColor = AppTheme.MainColor;
             dotSize = 8;
           } else if (nd <= trailLength) {
-            dotColor = AppTheme.MainColor
-                .withOpacity(1.0 - (nd / trailLength) * 0.8);
+            dotColor = AppTheme.MainColor.withOpacity(1.0 - (nd / trailLength) * 0.8);
             dotSize = 6;
           } else {
             dotColor = AppTheme.borderLineColor.withOpacity(0.5);
@@ -430,57 +427,81 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
             margin: const EdgeInsets.symmetric(horizontal: 2.5),
             width: dotSize,
             height: dotSize,
-            decoration:
-                BoxDecoration(shape: BoxShape.circle, color: dotColor),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: dotColor),
           );
         }),
         const SizedBox(width: 8),
-        Icon(Icons.phone_android_rounded,
-            color: AppTheme.graySubTitleColor, size: 28),
+        Icon(Icons.phone_android_rounded, color: AppTheme.graySubTitleColor, size: 28),
       ],
     );
   }
 
-  Widget _buildSyncProgressBar() {
+  Widget _buildSyncProgressBar(GlobalSummaryState state) {
+    Color barColor = AppTheme.MainColor;
+    if (state.status == GlobalSyncStatus.error) barColor = Colors.red;
+    if (state.status == GlobalSyncStatus.noInternet) barColor = Colors.orange;
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
       child: LinearProgressIndicator(
-        value: 0.0,
+        // Always show determinate progress — value drives the bar
+        value: state.progress > 0 ? state.progress : null,
         minHeight: 7,
-        backgroundColor: AppTheme.MainColor.withOpacity(0.15),
-        valueColor: AlwaysStoppedAnimation<Color>(AppTheme.MainColor),
+        backgroundColor: barColor.withOpacity(0.15),
+        valueColor: AlwaysStoppedAnimation<Color>(barColor),
       ),
     );
   }
 
-  Widget _buildSyncStatusText() {
+  Widget _buildSyncStatusText(GlobalSummaryState state) {
+    Color textColor = AppTheme.black_Color;
+    if (state.status == GlobalSyncStatus.error) textColor = Colors.red;
+    if (state.status == GlobalSyncStatus.noInternet) textColor = Colors.orange;
+    if (state.status == GlobalSyncStatus.success) textColor = Colors.green;
+
     return Text(
-      "Tap 'Sync Backup' to download all data",
-      style: MyStyles.regularText(size: 13, color: AppTheme.black_Color),
+      state.statusText,
+      style: MyStyles.regularText(size: 13, color: textColor),
       textAlign: TextAlign.center,
     );
   }
 
-  Widget _buildSyncButton() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: BoxDecoration(
-        color: AppTheme.MainColor,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.cloud_download_rounded,
-              color: Colors.white, size: 20),
-          const SizedBox(width: 10),
-          Text(
-            'Sync Backup',
-            style: MyStyles.boldText(size: 15, color: Colors.white),
-          ),
-        ],
+  Widget _buildSyncButton(BuildContext context, GlobalSummaryState state) {
+    final isSyncing = state.isSyncing;
+    return GestureDetector(
+      onTap: isSyncing
+          ? null
+          : () => context.read<GlobalDataCubit>().syncAll(),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: isSyncing ? AppTheme.MainColor.withOpacity(0.6) : AppTheme.MainColor,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (isSyncing)
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2.5,
+                ),
+              )
+            else
+              const Icon(Icons.cloud_download_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Text(
+              isSyncing ? 'Syncing...' : 'Sync Backup',
+              style: MyStyles.boldText(size: 15, color: Colors.white),
+            ),
+          ],
+        ),
       ),
     );
   }
+
 }
