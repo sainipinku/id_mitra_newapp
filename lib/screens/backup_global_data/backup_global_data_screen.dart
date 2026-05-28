@@ -1,31 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:video_player/video_player.dart';
-import 'package:idmitra/api_mamanger/api_manager.dart';
-import 'package:idmitra/api_mamanger/config.dart';
 import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/components/my_font_weight.dart';
-import 'package:idmitra/local_db/global_backup_local_ds.dart';
-
-// Entity config: [apiResponseKey, dbEntityType, schoolIdField]
-const _entityCfg = [
-  ['schools', 'school', 'id'],
-  ['students', 'student', 'school_id'],
-  ['orders', 'order', 'school_id'],
-  ['staff_orders', 'staff_order', 'school_id'],
-  ['student_corrections', 'student_correction', 'school_id'],
-  ['staff_corrections', 'staff_correction', 'school_id'],
-];
-
-const _entityDisplayNames = {
-  'schools': 'Schools',
-  'students': 'Students',
-  'orders': 'Orders',
-  'staff_orders': 'Staff Orders',
-  'student_corrections': 'Student Corrections',
-  'staff_corrections': 'Staff Corrections',
-};
+import 'package:idmitra/providers/global_summary/global_data_cubit.dart';
+import 'package:idmitra/providers/global_summary/global_summary_state.dart';
 
 class BackupGlobalDataScreen extends StatefulWidget {
   const BackupGlobalDataScreen({super.key});
@@ -43,13 +23,6 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
   bool _hasVideoError = false;
   bool _showControls = true;
   Timer? _hideControlsTimer;
-
-  bool _isSyncing = false;
-  int _savedRecords = 0;
-  int _totalRecords = 0;
-  String _syncStatusLabel = '';
-  DateTime? _lastSyncedAt;
-  String? _syncError;
 
   static const String _videoUrl =
       'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4';
@@ -133,157 +106,6 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
     return '$m:$s';
   }
 
-  // Retries on 429 with a live countdown, max 5 attempts
-  Future<dynamic> _getWithRetry(String url) async {
-    const maxRetries = 5;
-    for (int attempt = 0; attempt <= maxRetries; attempt++) {
-      final response = await ApiManager().getRequest(url);
-      if (response != null && response.statusCode == 429) {
-        if (attempt < maxRetries) {
-          for (int i = 5; i > 0; i--) {
-            if (!mounted) return null;
-            setState(() => _syncStatusLabel = 'Server busy, retrying in ${i}s...');
-            await Future.delayed(const Duration(seconds: 1));
-          }
-          continue;
-        }
-      }
-      return response;
-    }
-    return null;
-  }
-
-  Future<void> _syncBackup() async {
-    setState(() {
-      _isSyncing = true;
-      _syncError = null;
-      _savedRecords = 0;
-      _totalRecords = 0;
-      _syncStatusLabel = 'Connecting to server...';
-    });
-
-    try {
-      // ── Fetch page 1 of all entities ──
-      final response = await _getWithRetry(
-        Config.url(Routes.getPartnerGlobalData()),
-      );
-
-      if (response == null) {
-        setState(() {
-          _isSyncing = false;
-          _syncError = 'No internet connection. Please try again.';
-        });
-        return;
-      }
-      if (response.statusCode != 200) {
-        setState(() {
-          _isSyncing = false;
-          _syncError = 'Server error (${response.statusCode}). Please try again.';
-        });
-        return;
-      }
-
-      final body = jsonDecode(response.body) as Map<String, dynamic>;
-      if (body['success'] != true) {
-        setState(() {
-          _isSyncing = false;
-          _syncError = body['message'] ?? 'Server returned an error.';
-        });
-        return;
-      }
-
-      final data = body['data'] as Map<String, dynamic>;
-
-      // ── Calculate total records from pagination ──
-      int total = 0;
-      final paginationInfo = <String, Map<String, dynamic>>{};
-      for (final cfg in _entityCfg) {
-        final apiKey = cfg[0];
-        final entityData = data[apiKey] as Map<String, dynamic>?;
-        if (entityData != null) {
-          paginationInfo[apiKey] = entityData;
-          total += (entityData['total'] as int?) ??
-              (entityData['data'] as List).length;
-        }
-      }
-
-      if (mounted) setState(() => _totalRecords = total);
-
-      // ── Save page 1 data ──
-      final localDS = GlobalBackupLocalDS();
-      for (final cfg in _entityCfg) {
-        final apiKey = cfg[0];
-        final dbType = cfg[1];
-        final schoolIdKey = cfg[2];
-        final entityData = data[apiKey] as Map<String, dynamic>?;
-        if (entityData == null) continue;
-
-        final items = entityData['data'] as List;
-        if (items.isNotEmpty) {
-          if (mounted) {
-            setState(() => _syncStatusLabel =
-                'Saving ${_entityDisplayNames[apiKey]}...');
-          }
-          await localDS.saveEntities(dbType, items, schoolIdKey: schoolIdKey);
-          if (mounted) setState(() => _savedRecords += items.length);
-        }
-      }
-
-      // ── Fetch and save remaining pages ──
-      for (final cfg in _entityCfg) {
-        final apiKey = cfg[0];
-        final dbType = cfg[1];
-        final schoolIdKey = cfg[2];
-        final entityPagination = paginationInfo[apiKey];
-        if (entityPagination == null) continue;
-
-        final lastPage = entityPagination['last_page'] as int? ?? 1;
-        for (int page = 2; page <= lastPage; page++) {
-          if (mounted) {
-            setState(() => _syncStatusLabel =
-                'Fetching ${_entityDisplayNames[apiKey]} (page $page/$lastPage)...');
-          }
-
-          final pageResponse = await _getWithRetry(
-            Config.url(Routes.getPartnerGlobalDataPage(apiKey, page)),
-          );
-
-          if (pageResponse == null || pageResponse.statusCode != 200) continue;
-
-          final pageBody =
-              jsonDecode(pageResponse.body) as Map<String, dynamic>;
-          if (pageBody['success'] != true) continue;
-
-          final pageEntityData =
-              (pageBody['data'] as Map<String, dynamic>)[apiKey]
-                  as Map<String, dynamic>?;
-          if (pageEntityData == null) continue;
-
-          final pageItems = pageEntityData['data'] as List;
-          if (pageItems.isNotEmpty) {
-            await localDS.saveEntities(dbType, pageItems,
-                schoolIdKey: schoolIdKey);
-            if (mounted) setState(() => _savedRecords += pageItems.length);
-          }
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _isSyncing = false;
-          _lastSyncedAt = DateTime.now();
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _isSyncing = false;
-          _syncError = 'Unexpected error. Please try again.';
-        });
-      }
-    }
-  }
-
   @override
   void dispose() {
     _dotTimer?.cancel();
@@ -295,77 +117,82 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: _buildAppBar(),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── "How to Upload Image" label ──
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 4,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        color: AppTheme.MainColor,
-                        borderRadius: BorderRadius.circular(4),
+    return BlocProvider(
+      create: (_) => GlobalDataCubit(),
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: _buildAppBar(),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 4,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: AppTheme.MainColor,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      'How to Upload Image',
-                      style: MyStyles.boldText(
-                          size: 16, color: AppTheme.black_Color),
-                    ),
-                  ],
+                      const SizedBox(width: 10),
+                      Text(
+                        'How to Upload Image',
+                        style: MyStyles.boldText(size: 16, color: AppTheme.black_Color),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
 
-              // ── Full-width video player ──
-              SizedBox(
-                height: MediaQuery.of(context).size.height * 0.45,
-                width: double.infinity,
-                child: GestureDetector(
-                  onTap: _isVideoInitialized ? _onVideoTap : null,
-                  child: _hasVideoError
-                      ? _buildErrorWidget()
-                      : _isVideoInitialized
-                          ? _buildPlayer()
-                          : _buildLoading(),
+                // Video player
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.45,
+                  width: double.infinity,
+                  child: GestureDetector(
+                    onTap: _isVideoInitialized ? _onVideoTap : null,
+                    child: _hasVideoError
+                        ? _buildErrorWidget()
+                        : _isVideoInitialized
+                            ? _buildPlayer()
+                            : _buildLoading(),
+                  ),
                 ),
-              ),
 
-              // ── Sync section ──
-              const SizedBox(height: 24),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                child: Column(
-                  children: [
-                    _buildDotsRow(),
-                    const SizedBox(height: 14),
-                    _buildSyncProgressBar(),
-                    const SizedBox(height: 10),
-                    _buildSyncStatusText(),
-                    const SizedBox(height: 20),
-                    _buildSyncButton(),
-                  ],
+                const SizedBox(height: 24),
+
+                // Sync section — driven by BLoC
+                BlocBuilder<GlobalDataCubit, GlobalSummaryState>(
+                  builder: (context, state) {
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      child: Column(
+                        children: [
+                          _buildDotsRow(),
+                          const SizedBox(height: 14),
+                          _buildSyncProgressBar(state),
+                          const SizedBox(height: 10),
+                          _buildSyncStatusText(state),
+                          const SizedBox(height: 20),
+                          _buildSyncButton(context, state),
+                        ],
+                      ),
+                    );
+                  },
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  // ─────────────────────────────────────────────
-  // AppBar
-  // ─────────────────────────────────────────────
+  // ─── AppBar ───────────────────────────────────────────────────────────────
+
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       backgroundColor: Colors.white,
@@ -385,8 +212,7 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
             ),
             child: const Padding(
               padding: EdgeInsets.all(5.0),
-              child: Icon(Icons.arrow_back_ios_new_rounded,
-                  size: 18, color: Colors.black87),
+              child: Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: Colors.black87),
             ),
           ),
         ),
@@ -395,12 +221,13 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
     );
   }
 
+  // ─── Video widgets ────────────────────────────────────────────────────────
+
   Widget _buildLoading() {
     return Container(
       color: Colors.black,
       child: Center(
-        child: CircularProgressIndicator(
-            color: AppTheme.MainColor, strokeWidth: 3),
+        child: CircularProgressIndicator(color: AppTheme.MainColor, strokeWidth: 3),
       ),
     );
   }
@@ -501,9 +328,7 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
                           ],
                         ),
                         child: Icon(
-                          isPlaying
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
+                          isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                           color: Colors.white,
                           size: 34,
                         ),
@@ -522,21 +347,16 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
                         children: [
                           Text(_fmt(position),
                               style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600)),
+                                  color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
                           Text(_fmt(duration),
-                              style: const TextStyle(
-                                  color: Colors.white70, fontSize: 12)),
+                              style: const TextStyle(color: Colors.white70, fontSize: 12)),
                         ],
                       ),
                       SliderTheme(
                         data: SliderThemeData(
                           trackHeight: 3,
-                          thumbShape: const RoundSliderThumbShape(
-                              enabledThumbRadius: 7),
-                          overlayShape: const RoundSliderOverlayShape(
-                              overlayRadius: 14),
+                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                          overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
                           activeTrackColor: AppTheme.MainColor,
                           inactiveTrackColor: Colors.white.withOpacity(0.3),
                           thumbColor: Colors.white,
@@ -546,8 +366,7 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
                           value: progress,
                           onChanged: (val) {
                             _videoController.seekTo(Duration(
-                              milliseconds:
-                                  (val * duration.inMilliseconds).toInt(),
+                              milliseconds: (val * duration.inMilliseconds).toInt(),
                             ));
                           },
                         ),
@@ -578,9 +397,8 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
     );
   }
 
-  // ─────────────────────────────────────────────
-  // Sync section widgets
-  // ─────────────────────────────────────────────
+  // ─── Sync section widgets ─────────────────────────────────────────────────
+
   Widget _buildDotsRow() {
     const int totalDots = 14;
     const int trailLength = 5;
@@ -588,8 +406,7 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(Icons.cloud_sync_outlined,
-            color: AppTheme.graySubTitleColor, size: 28),
+        Icon(Icons.cloud_sync_outlined, color: AppTheme.graySubTitleColor, size: 28),
         const SizedBox(width: 8),
         ...List.generate(totalDots, (index) {
           final dist = (_activeDotIndex - index) % totalDots;
@@ -600,8 +417,7 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
             dotColor = AppTheme.MainColor;
             dotSize = 8;
           } else if (nd <= trailLength) {
-            dotColor = AppTheme.MainColor
-                .withOpacity(1.0 - (nd / trailLength) * 0.8);
+            dotColor = AppTheme.MainColor.withOpacity(1.0 - (nd / trailLength) * 0.8);
             dotSize = 6;
           } else {
             dotColor = AppTheme.borderLineColor.withOpacity(0.5);
@@ -611,41 +427,25 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
             margin: const EdgeInsets.symmetric(horizontal: 2.5),
             width: dotSize,
             height: dotSize,
-            decoration:
-                BoxDecoration(shape: BoxShape.circle, color: dotColor),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: dotColor),
           );
         }),
         const SizedBox(width: 8),
-        Icon(Icons.phone_android_rounded,
-            color: AppTheme.graySubTitleColor, size: 28),
+        Icon(Icons.phone_android_rounded, color: AppTheme.graySubTitleColor, size: 28),
       ],
     );
   }
 
-  Widget _buildSyncProgressBar() {
-    double? value;
+  Widget _buildSyncProgressBar(GlobalSummaryState state) {
     Color barColor = AppTheme.MainColor;
-
-    if (_isSyncing) {
-      if (_totalRecords > 0) {
-        value = (_savedRecords / _totalRecords).clamp(0.0, 1.0);
-      } else {
-        value = null; // indeterminate until we know total
-      }
-    } else if (_syncError != null) {
-      value = 0.0;
-      barColor = Colors.redAccent;
-    } else if (_lastSyncedAt != null) {
-      value = 1.0;
-      barColor = Colors.green;
-    } else {
-      value = 0.0;
-    }
+    if (state.status == GlobalSyncStatus.error) barColor = Colors.red;
+    if (state.status == GlobalSyncStatus.noInternet) barColor = Colors.orange;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
       child: LinearProgressIndicator(
-        value: value,
+        // Always show determinate progress — value drives the bar
+        value: state.progress > 0 ? state.progress : null,
         minHeight: 7,
         backgroundColor: barColor.withOpacity(0.15),
         valueColor: AlwaysStoppedAnimation<Color>(barColor),
@@ -653,61 +453,49 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
     );
   }
 
-  Widget _buildSyncStatusText() {
-    String text;
-    Color color = AppTheme.black_Color;
-
-    if (_syncError != null) {
-      text = _syncError!;
-      color = Colors.redAccent;
-    } else if (_isSyncing) {
-      text = _totalRecords > 0
-          ? '$_syncStatusLabel ($_savedRecords / $_totalRecords)'
-          : _syncStatusLabel;
-    } else if (_lastSyncedAt != null) {
-      final h = _lastSyncedAt!.hour.toString().padLeft(2, '0');
-      final m = _lastSyncedAt!.minute.toString().padLeft(2, '0');
-      text = 'Synced: $_savedRecords records saved at $h:$m';
-      color = Colors.green.shade700;
-    } else {
-      text = "Tap 'Sync Backup' to download all data";
-    }
+  Widget _buildSyncStatusText(GlobalSummaryState state) {
+    Color textColor = AppTheme.black_Color;
+    if (state.status == GlobalSyncStatus.error) textColor = Colors.red;
+    if (state.status == GlobalSyncStatus.noInternet) textColor = Colors.orange;
+    if (state.status == GlobalSyncStatus.success) textColor = Colors.green;
 
     return Text(
-      text,
-      style: MyStyles.regularText(size: 13, color: color),
+      state.statusText,
+      style: MyStyles.regularText(size: 13, color: textColor),
       textAlign: TextAlign.center,
     );
   }
 
-  Widget _buildSyncButton() {
+  Widget _buildSyncButton(BuildContext context, GlobalSummaryState state) {
+    final isSyncing = state.isSyncing;
     return GestureDetector(
-      onTap: _isSyncing ? null : _syncBackup,
+      onTap: isSyncing
+          ? null
+          : () => context.read<GlobalDataCubit>().syncAll(),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
-          color: _isSyncing
-              ? AppTheme.MainColor.withOpacity(0.6)
-              : AppTheme.MainColor,
+          color: isSyncing ? AppTheme.MainColor.withOpacity(0.6) : AppTheme.MainColor,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (_isSyncing)
+            if (isSyncing)
               const SizedBox(
                 width: 18,
                 height: 18,
                 child: CircularProgressIndicator(
-                    color: Colors.white, strokeWidth: 2.5),
+                  color: Colors.white,
+                  strokeWidth: 2.5,
+                ),
               )
             else
-              const Icon(Icons.cloud_download_rounded,
-                  color: Colors.white, size: 20),
+              const Icon(Icons.cloud_download_rounded, color: Colors.white, size: 20),
             const SizedBox(width: 10),
             Text(
-              _isSyncing ? 'Syncing...' : 'Sync Backup',
+              isSyncing ? 'Syncing...' : 'Sync Backup',
               style: MyStyles.boldText(size: 15, color: Colors.white),
             ),
           ],
@@ -715,4 +503,5 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
       ),
     );
   }
+
 }

@@ -15,7 +15,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 37,
+      version: 38,
       onCreate: (db, version) async {
         await db.execute('''
         CREATE TABLE students (
@@ -97,8 +97,13 @@ class DBHelper {
         await _createPendingUpdateHolidaysTable(db);
         await _createServerStatusTable(db);
         await _createGlobalBackupTable(db);
+        await _createGlobalSummaryTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 38) {
+          await _createGlobalSummaryTable(db);
+        }
+
         if (oldVersion < 37) {
           await _createGlobalBackupTable(db);
         }
@@ -795,8 +800,114 @@ class DBHelper {
     );
   }
 
-  static Future<void> _createStaffTable(Database db) async {
+  static Future<void> _createGlobalSummaryTable(Database db) async {
+    // Stores the full raw JSON of the last successful global summary API response
     await db.execute('''
+        CREATE TABLE IF NOT EXISTS global_summary_cache (
+          id INTEGER PRIMARY KEY,
+          raw_json TEXT NOT NULL,
+          synced_at INTEGER NOT NULL
+        )
+        ''');
+
+    // Latest schools from summary
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS gs_schools (
+          id INTEGER PRIMARY KEY,
+          uuid TEXT,
+          name TEXT,
+          school_prefix TEXT,
+          status INTEGER,
+          created_at TEXT,
+          raw_json TEXT
+        )
+        ''');
+
+    // Latest students from summary
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS gs_students (
+          id INTEGER PRIMARY KEY,
+          uuid TEXT,
+          school_id INTEGER,
+          school_name TEXT,
+          school_prefix TEXT,
+          name TEXT,
+          admission_no TEXT,
+          phone TEXT,
+          status INTEGER,
+          created_at TEXT,
+          raw_json TEXT
+        )
+        ''');
+
+    // Latest orders from summary
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS gs_orders (
+          id INTEGER PRIMARY KEY,
+          uuid TEXT,
+          school_id INTEGER,
+          school_name TEXT,
+          school_prefix TEXT,
+          student_id INTEGER,
+          student_name TEXT,
+          type TEXT,
+          status TEXT,
+          created_at TEXT,
+          raw_json TEXT
+        )
+        ''');
+
+    // Latest staff orders from summary
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS gs_staff_orders (
+          id INTEGER PRIMARY KEY,
+          uuid TEXT,
+          school_id INTEGER,
+          school_name TEXT,
+          school_prefix TEXT,
+          school_staff_id INTEGER,
+          staff_name TEXT,
+          type TEXT,
+          quantity TEXT,
+          status TEXT,
+          created_at TEXT,
+          raw_json TEXT
+        )
+        ''');
+
+    // Latest student corrections from summary
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS gs_student_corrections (
+          id INTEGER PRIMARY KEY,
+          uuid TEXT,
+          school_id INTEGER,
+          school_name TEXT,
+          school_prefix TEXT,
+          list_type TEXT,
+          status TEXT,
+          class_name TEXT,
+          section_name TEXT,
+          created_at TEXT,
+          raw_json TEXT
+        )
+        ''');
+
+    // Latest staff corrections from summary
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS gs_staff_corrections (
+          id INTEGER PRIMARY KEY,
+          school_id INTEGER,
+          school_name TEXT,
+          school_prefix TEXT,
+          school_staff_id INTEGER,
+          staff_name TEXT,
+          created_at TEXT,
+          raw_json TEXT
+        )
+        ''');
+  }
+
+  static Future<void> _createStaffTable(Database db) async {    await db.execute('''
         CREATE TABLE IF NOT EXISTS staff (
           id INTEGER PRIMARY KEY,
           uuid TEXT,

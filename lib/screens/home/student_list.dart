@@ -203,6 +203,23 @@ class _StudentListingPageState extends State<StudentListingPage>
             ],
           ),
         ),
+        floatingActionButton: tabIndex == 1 && !_correctionIsGridView
+            ? Builder(builder: (ctx) => FloatingActionButton(
+          backgroundColor: AppTheme.btnColor,
+          tooltip: 'Download',
+          onPressed: () {
+            showDialog(
+              context: ctx,
+              barrierDismissible: false,
+              builder: (_) => BlocProvider.value(
+                value: ctx.read<CorrectionCubit>(),
+                child: _DownloadChecklistDialog(schoolId: widget.schoolId),
+              ),
+            );
+          },
+          child: const Icon(Icons.download_rounded, color: Colors.white),
+        ))
+            : null,
         body: TabBarView(
           controller: _tabController,
           children: [
@@ -861,6 +878,11 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
+        // Fetch correction list data fresh every time this tab is shown
+        context.read<CorrectionCubit>().fetchCorrectionStudents(
+          schoolId: widget.schoolId,
+        );
+
         final schoolIntId = widget.schoolDetailsModel?.id;
         if (schoolIntId != null) {
           // Always fetch latest imageShape from API so changes reflect immediately
@@ -887,17 +909,7 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      floatingActionButton: _isGridView
-          ? null
-          : FloatingActionButton(
-        backgroundColor: AppTheme.btnColor,
-        tooltip: 'Download',
-        onPressed: () => _showDownloadDialog(context),
-        child:
-        const Icon(Icons.download_rounded, color: Colors.white),
-      ),
-      body: BlocListener<CorrectionCubit, CorrectionState>(
+    return BlocListener<CorrectionCubit, CorrectionState>(
         listenWhen: (p, c) =>
         p.downloadUrl != c.downloadUrl ||
             p.downloadError != c.downloadError ||
@@ -1093,14 +1105,7 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
                   }
 
                   if (state.studentsLoading && state.students.isEmpty) {
-                    return RefreshIndicator(
-                      color: AppTheme.btnColor,
-                      onRefresh: _refresh,
-                      child: SingleChildScrollView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        child: const ShimmerList(expanded: false),
-                      ),
-                    );
+                    return const ShimmerList(expanded: false, itemCount: 6);
                   }
                   if (state.studentsError != null &&
                       state.students.isEmpty) {
@@ -1175,31 +1180,31 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
                     );
                   }
 
-                  return RefreshIndicator(
-                    color: AppTheme.btnColor,
-                    onRefresh: _refresh,
-                    child: Column(
-                      children: [
-                        if (!_isGridView &&
-                            state.selectedStudentIds.isNotEmpty)
-                          _SelectionToolbar(
-                            selectedCount:
-                            state.selectedStudentIds.length,
-                            onSelectAll: () => context
-                                .read<CorrectionCubit>()
-                                .selectAllStudents(),
-                            onClear: () => context
-                                .read<CorrectionCubit>()
-                                .clearStudentSelection(),
-                            actionLabel: 'Create Order',
-                            actionIcon: Icons.send_rounded,
-                            actionLoading: state.sendOrderLoading,
-                            onAction: state.sendOrderLoading
-                                ? null
-                                : () =>
-                                _showCreateOrderDialog(context),
-                          ),
-                        Expanded(
+                  return Column(
+                    children: [
+                      if (!_isGridView &&
+                          state.selectedStudentIds.isNotEmpty)
+                        _SelectionToolbar(
+                          selectedCount:
+                          state.selectedStudentIds.length,
+                          onSelectAll: () => context
+                              .read<CorrectionCubit>()
+                              .selectAllStudents(),
+                          onClear: () => context
+                              .read<CorrectionCubit>()
+                              .clearStudentSelection(),
+                          actionLabel: 'Create Order',
+                          actionIcon: Icons.send_rounded,
+                          actionLoading: state.sendOrderLoading,
+                          onAction: state.sendOrderLoading
+                              ? null
+                              : () =>
+                              _showCreateOrderDialog(context),
+                        ),
+                      Expanded(
+                        child: RefreshIndicator(
+                          color: AppTheme.btnColor,
+                          onRefresh: _refresh,
                           child: _isGridView
                               ? ListView.builder(
                             controller: _scrollCtrl,
@@ -1332,15 +1337,14 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
                             },
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   );
                 },
               ),
             ),
           ],
         ),
-      ),
     );
   }
 

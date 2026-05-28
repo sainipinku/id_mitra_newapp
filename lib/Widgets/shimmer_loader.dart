@@ -79,6 +79,8 @@ class ShimmerList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final list = ListView.builder(
+      shrinkWrap: !expanded,
+      physics: expanded ? null : const NeverScrollableScrollPhysics(),
       itemCount: itemCount,
       itemBuilder: (_, __) => _row(),
     );

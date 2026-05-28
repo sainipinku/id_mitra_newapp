@@ -932,21 +932,10 @@ class StudentsCubit extends Cubit<StudentsState> {
     required String path,
     required StudentDetailsData student,
   }) async {
-    // 1. Check internet
-    final connectivity = await Connectivity().checkConnectivity();
-    bool hasInternet = !connectivity.contains(ConnectivityResult.none);
+    final hasInternet = await _hasInternet();
 
     if (hasInternet) {
-      try {
-        final result = await InternetAddress.lookup('google.com');
-        hasInternet = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
-      } catch (_) {
-        hasInternet = false;
-      }
-    }
-
-    if (hasInternet) {
-      // 2. Online: Direct upload
+      // Online: Direct upload
       try {
         File fixedImage = await FlutterExifRotation.rotateImage(path: path);
         var response = await apiManager.multiRequestRoute(
@@ -959,20 +948,19 @@ class StudentsCubit extends Cubit<StudentsState> {
           final updated = student.copyWith(
             profilePhotoUrl: jsonData['data']['profile_photo_url'],
             isPhotoPendingSync: false,
-            offlinePhotoPath: null,
+            clearOfflinePhotoPath: true,
           );
-          await localDS.insertStudents([updated]);
+          await localDS.insertStudents([updated], forceUpdate: true);
           updateStudentInState(updated);
         }
       } catch (e) {
         debugPrint("Online upload error: $e");
       }
     } else {
-      // 3. Offline: Save locally
+      // Offline: Save locally
       try {
         final directory = await getApplicationDocumentsDirectory();
-        final fileName =
-            'student_photo_${student.uuid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final fileName = 'student_photo_${student.uuid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
         final savedPath = '${directory.path}/$fileName';
 
         await File(path).copy(savedPath);
@@ -982,7 +970,7 @@ class StudentsCubit extends Cubit<StudentsState> {
           offlinePhotoPath: savedPath,
         );
 
-        await localDS.insertStudents([updated]);
+        await localDS.insertStudents([updated], forceUpdate: true);
         updateStudentInState(updated);
         debugPrint("Offline photo saved: $savedPath");
       } catch (e) {
@@ -992,32 +980,46 @@ class StudentsCubit extends Cubit<StudentsState> {
   }
 
   Future<void> _syncStudentPhoto(StudentDetailsData student) async {
-    if (student.isPhotoPendingSync && student.offlinePhotoPath != null) {
-      final file = File(student.offlinePhotoPath!);
-      if (await file.exists()) {
+    if (!student.isPhotoPendingSync || student.offlinePhotoPath == null) return;
+
+    final file = File(student.offlinePhotoPath!);
+    final exists = await file.exists();
+
+    if (!exists) {
+      // File missing — flag clear karo taaki dobara retry na ho
+      debugPrint("Offline photo file not found for: ${student.name} at ${student.offlinePhotoPath}");
+      final cleared = student.copyWith(isPhotoPendingSync: false, clearOfflinePhotoPath: true);
+      await localDS.insertStudents([cleared], forceUpdate: true);
+      updateStudentInState(cleared);
+      return;
+    }
+
+    try {
+      debugPrint("Uploading offline photo for: ${student.name}");
+      final photoResponse = await apiManager.multiRequestRoute(
+        file.path,
+        Config.baseUrl + Routes.updateStudentProfile(student.uuid ?? ''),
+      );
+      debugPrint("Photo sync response: ${photoResponse.statusCode} for ${student.name}");
+      if (photoResponse.statusCode == 200) {
+        final photoJson = jsonDecode(photoResponse.body);
+        final newUrl = photoJson['data']?['profile_photo_url'] as String?;
+        final updatedWithPhoto = student.copyWith(
+          profilePhotoUrl: newUrl,
+          isPhotoPendingSync: false,
+          clearOfflinePhotoPath: true,
+        );
+        await localDS.insertStudents([updatedWithPhoto], forceUpdate: true);
+        updateStudentInState(updatedWithPhoto);
+        debugPrint("Synced offline photo for: ${student.name}, url: $newUrl");
         try {
-          final photoResponse = await apiManager.multiRequestRoute(
-            file.path,
-            Config.baseUrl + Routes.updateStudentProfile(student.uuid ?? ''),
-          );
-          if (photoResponse.statusCode == 200) {
-            final photoJson = jsonDecode(photoResponse.body);
-            final updatedWithPhoto = student.copyWith(
-              profilePhotoUrl: photoJson['data']['profile_photo_url'],
-              isPhotoPendingSync: false,
-              offlinePhotoPath: null,
-            );
-            await localDS.insertStudents([updatedWithPhoto]);
-            updateStudentInState(updatedWithPhoto);
-            debugPrint("Synced offline photo for: ${student.name}");
-            try {
-              await file.delete();
-            } catch (_) {}
-          }
-        } catch (e) {
-          debugPrint("Error syncing photo for ${student.name}: $e");
-        }
+          await file.delete();
+        } catch (_) {}
+      } else {
+        debugPrint("Photo sync failed (${photoResponse.statusCode}): ${photoResponse.body}");
       }
+    } catch (e) {
+      debugPrint("Error syncing photo for ${student.name}: $e");
     }
   }
 

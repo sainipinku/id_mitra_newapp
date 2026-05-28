@@ -1159,34 +1159,34 @@ class _AdminCorrectionTabState extends State<_AdminCorrectionTab> {
                     );
                   }
 
-                  return RefreshIndicator(
-                    color: AppTheme.btnColor,
-                    onRefresh: () async {
-                      _searchCtrl.clear();
-                      context.read<CorrectionCubit>().fetchCorrectionStudents(
-                        schoolId: widget.schoolId,
-                      );
-                    },
-                    child: Column(
-                      children: [
-                        if (!_isGridView &&
-                            state.selectedStudentIds.isNotEmpty)
-                          _SelectionToolbar(
-                            selectedCount: state.selectedStudentIds.length,
-                            onSelectAll: () => context
-                                .read<CorrectionCubit>()
-                                .selectAllStudents(),
-                            onClear: () => context
-                                .read<CorrectionCubit>()
-                                .clearStudentSelection(),
-                            actionLabel: 'Create Order',
-                            actionIcon: Icons.send_rounded,
-                            actionLoading: state.sendOrderLoading,
-                            onAction: state.sendOrderLoading
-                                ? null
-                                : () => _showCreateOrderDialog(context),
-                          ),
-                        Expanded(
+                  return Column(
+                    children: [
+                      if (!_isGridView &&
+                          state.selectedStudentIds.isNotEmpty)
+                        _SelectionToolbar(
+                          selectedCount: state.selectedStudentIds.length,
+                          onSelectAll: () => context
+                              .read<CorrectionCubit>()
+                              .selectAllStudents(),
+                          onClear: () => context
+                              .read<CorrectionCubit>()
+                              .clearStudentSelection(),
+                          actionLabel: 'Create Order',
+                          actionIcon: Icons.send_rounded,
+                          actionLoading: state.sendOrderLoading,
+                          onAction: state.sendOrderLoading
+                              ? null
+                              : () => _showCreateOrderDialog(context),
+                        ),
+                      Expanded(
+                        child: RefreshIndicator(
+                          color: AppTheme.btnColor,
+                          onRefresh: () async {
+                            _searchCtrl.clear();
+                            context.read<CorrectionCubit>().fetchCorrectionStudents(
+                              schoolId: widget.schoolId,
+                            );
+                          },
                           child: _isGridView
                               ? ListView.builder(
                             controller: _scrollCtrl,
@@ -1313,8 +1313,8 @@ class _AdminCorrectionTabState extends State<_AdminCorrectionTab> {
                             },
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   );
                 },
               ),
