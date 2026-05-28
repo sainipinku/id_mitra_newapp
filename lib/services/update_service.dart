@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:in_app_update/in_app_update.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:idmitra/components/app_theme.dart';
@@ -20,6 +21,36 @@ class UpdateService {
       'https://apps.apple.com/app/idmitra/id0000000000';
 
   Future<void> checkForUpdate() async {
+    // Android: use official In-App Update API first
+    if (Platform.isAndroid) {
+      await _checkInAppUpdate();
+      return;
+    }
+
+    // iOS: fallback to App Store version check
+    if (Platform.isIOS) {
+      await _checkStoreVersion();
+    }
+  }
+
+  /// Google Play In-App Update API (Android only)
+  Future<void> _checkInAppUpdate() async {
+    try {
+      final AppUpdateInfo info = await InAppUpdate.checkForUpdate();
+
+      if (info.updateAvailability == UpdateAvailability.updateAvailable) {
+        // Immediate update — full screen force update
+        await InAppUpdate.performImmediateUpdate();
+      }
+    } catch (e) {
+      print('In-App Update error: $e — falling back to store check');
+      // Fallback: manual Play Store version check
+      await _checkStoreVersion();
+    }
+  }
+
+  /// Manual version check via store scraping (fallback / iOS)
+  Future<void> _checkStoreVersion() async {
     try {
       final packageInfo = await PackageInfo.fromPlatform();
       final currentVersion = packageInfo.version;
@@ -42,7 +73,7 @@ class UpdateService {
       print('Latest version: $latestVersion');
 
       if (_isNewVersionAvailable(currentVersion, latestVersion)) {
-        print(' Update available! Showing dialog...');
+        print('Update available! Showing dialog...');
         _showUpdateDialog(
           currentVersion: currentVersion,
           latestVersion: latestVersion,
