@@ -203,6 +203,23 @@ class _StudentListingPageState extends State<StudentListingPage>
             ],
           ),
         ),
+        floatingActionButton: tabIndex == 1 && !_correctionIsGridView
+            ? Builder(builder: (ctx) => FloatingActionButton(
+          backgroundColor: AppTheme.btnColor,
+          tooltip: 'Download',
+          onPressed: () {
+            showDialog(
+              context: ctx,
+              barrierDismissible: false,
+              builder: (_) => BlocProvider.value(
+                value: ctx.read<CorrectionCubit>(),
+                child: _DownloadChecklistDialog(schoolId: widget.schoolId),
+              ),
+            );
+          },
+          child: const Icon(Icons.download_rounded, color: Colors.white),
+        ))
+            : null,
         body: TabBarView(
           controller: _tabController,
           children: [
@@ -242,15 +259,13 @@ class _CountBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
+    return Container(
+      width: double.infinity,
       color: AppTheme.btnColor.withOpacity(0.08),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Text(
-          '$label: $total',
-          style: MyStyles.mediumText(size: 13, color: AppTheme.btnColor),
-        ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Text(
+        '$label: $total',
+        style: MyStyles.mediumText(size: 13, color: AppTheme.btnColor),
       ),
     );
   }
@@ -391,9 +406,6 @@ class _StudentsTabState extends State<_StudentsTab> {
   final ScrollController _gridScrollCtrl = ScrollController();
   Timer? _debounce;
 
-  // ── FIX: Initial fetch ho gaya ya nahi, ye track karne ke liye flag
-  bool _initialFetchDone = false;
-
   final Set<int> _selectedIds = {};
   final Map<int, String> _idToUuid = {};
 
@@ -494,12 +506,9 @@ class _StudentsTabState extends State<_StudentsTab> {
     //  Initial fetch with schoolId
     cubit.fetchStudents(search: '', schoolId: widget.schoolId);
 
-    // ── FIX: Initial fetch trigger hone ke baad flag set karo
-    // taaki shimmer dikhe na ki "no_data" image
+    // imageShape fetch (Doc 6)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        setState(() => _initialFetchDone = true);
-
         final schoolIntId = widget.schoolDetailsModel?.id;
         if (schoolIntId != null) {
           context.read<SchoolCubit>().fetchAndApplyImageShape(schoolIntId);
@@ -556,7 +565,6 @@ class _StudentsTabState extends State<_StudentsTab> {
       ),
       body: Column(
         children: [
-          // ── Banner: original simple version, no loading-based hiding
           BlocBuilder<StudentsCubit, StudentsState>(
             buildWhen: (p, c) => p.total != c.total,
             builder: (_, s) =>
@@ -664,36 +672,13 @@ class _StudentsTabState extends State<_StudentsTab> {
                           final schoolState =
                               context.watch<SchoolCubit>().state;
 
-                          // ─────────────────────────────────────────────
-                          // ── FIX: PROPER LOADING STATE PRIORITY ──
-                          // Pehle loading/syncing check karo,
-                          // tab hi empty check karo, taaki "no_data"
-                          // race condition me na dikhe
-                          // ─────────────────────────────────────────────
-
-                          // Initial fetch trigger hone se pehle shimmer dikhao
-                          if (!_initialFetchDone) {
+                          // Show shimmer during initial sync
+                          if (state.isSyncing && state.studentsList.isEmpty) {
                             return const ShimmerList(expanded: false);
                           }
-
-                          // Syncing ho rha hai
-                          if (state.isSyncing) {
+                          if (state.loading && state.studentsList.isEmpty) {
                             return const ShimmerList(expanded: false);
                           }
-
-                          // Loading ho rha hai
-                          if (state.loading) {
-                            return const ShimmerList(expanded: false);
-                          }
-
-                          // Pagination loading bhi check karo - list khali ho ja sakti hai briefly
-                          if (state.isPaginationLoading &&
-                              state.studentsList.isEmpty) {
-                            return const ShimmerList(expanded: false);
-                          }
-
-                          // Sab loading complete - ab agar list khali hai
-                          // toh actually "no data" hai
                           if (state.studentsList.isEmpty) {
                             return Center(
                                 child: Image.asset(
@@ -751,6 +736,7 @@ class _StudentsTabState extends State<_StudentsTab> {
                             controller: _scrollCtrl,
                             itemCount: itemCount,
                             itemBuilder: (context, index) {
+                              print(jsonEncode("singledata-----${state.studentsList[0].toJson()}"));
                               if (index < state.studentsList.length) {
                                 final student = state.studentsList[index];
                                 String? imageShape =
@@ -892,6 +878,11 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
+        // Fetch correction list data fresh every time this tab is shown
+        context.read<CorrectionCubit>().fetchCorrectionStudents(
+          schoolId: widget.schoolId,
+        );
+
         final schoolIntId = widget.schoolDetailsModel?.id;
         if (schoolIntId != null) {
           // Always fetch latest imageShape from API so changes reflect immediately
@@ -918,17 +909,7 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      floatingActionButton: _isGridView
-          ? null
-          : FloatingActionButton(
-        backgroundColor: AppTheme.btnColor,
-        tooltip: 'Download',
-        onPressed: () => _showDownloadDialog(context),
-        child:
-        const Icon(Icons.download_rounded, color: Colors.white),
-      ),
-      body: BlocListener<CorrectionCubit, CorrectionState>(
+    return BlocListener<CorrectionCubit, CorrectionState>(
         listenWhen: (p, c) =>
         p.downloadUrl != c.downloadUrl ||
             p.downloadError != c.downloadError ||
@@ -1022,18 +1003,10 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
         },
         child: Column(
           children: [
-            // ── FIX: Banner ko loading ke time hide karo
             BlocBuilder<CorrectionCubit, CorrectionState>(
-              buildWhen: (p, c) =>
-              p.studentsTotal != c.studentsTotal ||
-                  p.studentsLoading != c.studentsLoading,
-              builder: (_, s) {
-                if (s.studentsLoading && s.students.isEmpty) {
-                  return const SizedBox.shrink();
-                }
-                return _CountBanner(
-                    total: s.studentsTotal, label: 'Total Correction');
-              },
+              buildWhen: (p, c) => p.studentsTotal != c.studentsTotal,
+              builder: (_, s) => _CountBanner(
+                  total: s.studentsTotal, label: 'Total Correction'),
             ),
             Padding(
               padding: const EdgeInsets.all(16),
@@ -1132,14 +1105,7 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
                   }
 
                   if (state.studentsLoading && state.students.isEmpty) {
-                    return RefreshIndicator(
-                      color: AppTheme.btnColor,
-                      onRefresh: _refresh,
-                      child: SingleChildScrollView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        child: const ShimmerList(expanded: false),
-                      ),
-                    );
+                    return const ShimmerList(expanded: false, itemCount: 6);
                   }
                   if (state.studentsError != null &&
                       state.students.isEmpty) {
@@ -1214,31 +1180,31 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
                     );
                   }
 
-                  return RefreshIndicator(
-                    color: AppTheme.btnColor,
-                    onRefresh: _refresh,
-                    child: Column(
-                      children: [
-                        if (!_isGridView &&
-                            state.selectedStudentIds.isNotEmpty)
-                          _SelectionToolbar(
-                            selectedCount:
-                            state.selectedStudentIds.length,
-                            onSelectAll: () => context
-                                .read<CorrectionCubit>()
-                                .selectAllStudents(),
-                            onClear: () => context
-                                .read<CorrectionCubit>()
-                                .clearStudentSelection(),
-                            actionLabel: 'Create Order',
-                            actionIcon: Icons.send_rounded,
-                            actionLoading: state.sendOrderLoading,
-                            onAction: state.sendOrderLoading
-                                ? null
-                                : () =>
-                                _showCreateOrderDialog(context),
-                          ),
-                        Expanded(
+                  return Column(
+                    children: [
+                      if (!_isGridView &&
+                          state.selectedStudentIds.isNotEmpty)
+                        _SelectionToolbar(
+                          selectedCount:
+                          state.selectedStudentIds.length,
+                          onSelectAll: () => context
+                              .read<CorrectionCubit>()
+                              .selectAllStudents(),
+                          onClear: () => context
+                              .read<CorrectionCubit>()
+                              .clearStudentSelection(),
+                          actionLabel: 'Create Order',
+                          actionIcon: Icons.send_rounded,
+                          actionLoading: state.sendOrderLoading,
+                          onAction: state.sendOrderLoading
+                              ? null
+                              : () =>
+                              _showCreateOrderDialog(context),
+                        ),
+                      Expanded(
+                        child: RefreshIndicator(
+                          color: AppTheme.btnColor,
+                          onRefresh: _refresh,
                           child: _isGridView
                               ? ListView.builder(
                             controller: _scrollCtrl,
@@ -1371,15 +1337,14 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
                             },
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   );
                 },
               ),
             ),
           ],
         ),
-      ),
     );
   }
 
@@ -2275,7 +2240,6 @@ class _OrdersTabState extends State<_OrdersTab> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // ── Banner: original simple version, no loading-based hiding
         BlocBuilder<OrdersCubit, OrdersState>(
           buildWhen: (p, c) => p.total != c.total,
           builder: (_, s) =>
@@ -3516,13 +3480,28 @@ class _ProcessChecklistDialogState
 
   static const _listTypes = [
     {'value': '', 'label': '- Select List Type -'},
-    {'value': 'class_wise', 'label': 'Class Wise'},
-    {'value': 'section_wise', 'label': 'Section Wise'},
+
+    {
+      'value': 'class_wise',
+      'label': 'Class Wise'
+    },
+
+    {
+      'value': 'section_wise',
+      'label': 'Section Wise'
+    },
   ];
 
+  /// =========================
+  /// FIXED PROCESS TYPES
+  /// =========================
   static const _processTypes = [
     {'value': '', 'label': '- Select Process Type -'},
-    {'value': 'create', 'label': 'Create Correction List'},
+
+    {
+      'value': 'create',
+      'label': 'Create Correction List'
+    },
   ];
 
   String _selectedListType = '';
@@ -3535,10 +3514,22 @@ class _ProcessChecklistDialogState
       p.sendOrderLoading != c.sendOrderLoading ||
           p.sendOrderSuccess != c.sendOrderSuccess ||
           p.sendOrderError != c.sendOrderError,
+
       listener: (ctx, state) {
+
+        print("========= LISTENER =========");
+        print("Loading => ${state.sendOrderLoading}");
+        print("Success => ${state.sendOrderSuccess}");
+        print("Error => ${state.sendOrderError}");
+        print("Message => ${state.sendOrderMessage}");
+
+        /// SUCCESS
         if (!state.sendOrderLoading && state.sendOrderSuccess) {
+
           Navigator.of(context).pop();
+
           widget.onSuccess?.call();
+
           ScaffoldMessenger.of(ctx).showSnackBar(
             SnackBar(
               content: Text(
@@ -3554,14 +3545,19 @@ class _ProcessChecklistDialogState
             ),
           );
         }
+
+        /// ERROR
         if (!state.sendOrderLoading &&
             state.sendOrderError != null) {
+
           final isAlready = state.sendOrderError!
               .toLowerCase()
               .contains('already processed');
+
           if (!isAlready) {
             Navigator.of(context).pop();
           }
+
           ScaffoldMessenger.of(ctx).showSnackBar(
             SnackBar(
               content: Text(state.sendOrderError!),
@@ -3576,35 +3572,51 @@ class _ProcessChecklistDialogState
           );
         }
       },
+
       builder: (context, state) {
+
         return Dialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
+
           backgroundColor: Colors.white,
+
           child: Padding(
             padding: const EdgeInsets.all(20),
+
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
+
               children: [
+
+                /// =========================
+                /// HEADER
+                /// =========================
                 Row(
                   children: [
+
                     Text(
                       'Process Checklist Or Orders',
+
                       style: MyStyles.boldText(
                         size: 16,
                         color: AppTheme.black_Color,
                       ),
                     ),
+
                     const Spacer(),
+
                     GestureDetector(
                       onTap: state.sendOrderLoading
                           ? null
                           : () => Navigator.of(context).pop(),
+
                       child: Container(
                         width: 32,
                         height: 32,
+
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
                             colors: [
@@ -3612,9 +3624,11 @@ class _ProcessChecklistDialogState
                               Color(0xFFFF8E53),
                             ],
                           ),
+
                           borderRadius:
                           BorderRadius.circular(8),
                         ),
+
                         child: const Icon(
                           Icons.close,
                           color: Colors.white,
@@ -3624,50 +3638,72 @@ class _ProcessChecklistDialogState
                     ),
                   ],
                 ),
+
                 const Divider(height: 24),
+
+                /// =========================
+                /// LIST TYPE
+                /// =========================
                 Text(
                   'List Type',
+
                   style: MyStyles.mediumText(
                     size: 13,
                     color: AppTheme.black_Color,
                   ),
                 ),
+
                 const SizedBox(height: 8),
+
                 Container(
                   height: 48,
+
                   padding:
                   const EdgeInsets.symmetric(horizontal: 12),
+
                   decoration: BoxDecoration(
                     border: Border.all(
                       color: _selectedListType.isNotEmpty
                           ? AppTheme.btnColor
                           : Colors.grey.shade300,
-                      width: _selectedListType.isNotEmpty
+
+                      width:
+                      _selectedListType.isNotEmpty
                           ? 1.5
                           : 1,
                     ),
+
                     borderRadius: BorderRadius.circular(10),
                   ),
+
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
+
                       value: _selectedListType,
+
                       isExpanded: true,
+
                       icon: const Icon(
                         Icons.keyboard_arrow_down_rounded,
                         color: AppTheme.graySubTitleColor,
                       ),
+
                       style: MyStyles.regularText(
                         size: 14,
                         color: AppTheme.black_Color,
                       ),
+
                       items: _listTypes
                           .map(
                             (t) => DropdownMenuItem<String>(
                           value: t['value']!,
+
                           child: Text(
                             t['label']!,
+
                             style: MyStyles.regularText(
                               size: 14,
+
                               color: t['value']!.isEmpty
                                   ? AppTheme.graySubTitleColor
                                   : AppTheme.black_Color,
@@ -3676,7 +3712,11 @@ class _ProcessChecklistDialogState
                         ),
                       )
                           .toList(),
+
                       onChanged: (v) {
+
+                        print("Selected List Type => $v");
+
                         setState(() {
                           _selectedListType = v ?? '';
                         });
@@ -3684,50 +3724,72 @@ class _ProcessChecklistDialogState
                     ),
                   ),
                 ),
+
                 const SizedBox(height: 16),
+
+                /// =========================
+                /// PROCESS TYPE
+                /// =========================
                 Text(
                   'Select Process Type',
+
                   style: MyStyles.mediumText(
                     size: 13,
                     color: AppTheme.black_Color,
                   ),
                 ),
+
                 const SizedBox(height: 8),
+
                 Container(
                   height: 48,
+
                   padding:
                   const EdgeInsets.symmetric(horizontal: 12),
+
                   decoration: BoxDecoration(
                     border: Border.all(
                       color: _selectedProcessType.isNotEmpty
                           ? AppTheme.btnColor
                           : Colors.grey.shade300,
-                      width: _selectedProcessType.isNotEmpty
+
+                      width:
+                      _selectedProcessType.isNotEmpty
                           ? 1.5
                           : 1,
                     ),
+
                     borderRadius: BorderRadius.circular(10),
                   ),
+
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
+
                       value: _selectedProcessType,
+
                       isExpanded: true,
+
                       icon: const Icon(
                         Icons.keyboard_arrow_down_rounded,
                         color: AppTheme.graySubTitleColor,
                       ),
+
                       style: MyStyles.regularText(
                         size: 14,
                         color: AppTheme.black_Color,
                       ),
+
                       items: _processTypes
                           .map(
                             (t) => DropdownMenuItem<String>(
                           value: t['value']!,
+
                           child: Text(
                             t['label']!,
+
                             style: MyStyles.regularText(
                               size: 14,
+
                               color: t['value']!.isEmpty
                                   ? AppTheme.graySubTitleColor
                                   : AppTheme.black_Color,
@@ -3736,7 +3798,11 @@ class _ProcessChecklistDialogState
                         ),
                       )
                           .toList(),
+
                       onChanged: (v) {
+
+                        print("Selected Process Type => $v");
+
                         setState(() {
                           _selectedProcessType = v ?? '';
                         });
@@ -3744,26 +3810,39 @@ class _ProcessChecklistDialogState
                     ),
                   ),
                 ),
+
                 const SizedBox(height: 24),
+
+                /// =========================
+                /// BUTTONS
+                /// =========================
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
+
                   children: [
+
+                    /// CANCEL
                     GestureDetector(
                       onTap: state.sendOrderLoading
                           ? null
                           : () => Navigator.of(context).pop(),
+
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 20,
                           vertical: 11,
                         ),
+
                         decoration: BoxDecoration(
                           color: const Color(0xFFFF6B6B),
+
                           borderRadius:
                           BorderRadius.circular(25),
                         ),
+
                         child: Text(
                           'Cancel',
+
                           style: MyStyles.mediumText(
                             size: 14,
                             color: Colors.white,
@@ -3771,103 +3850,157 @@ class _ProcessChecklistDialogState
                         ),
                       ),
                     ),
+
                     const SizedBox(width: 12),
+
+                    /// CONFIRM
                     GestureDetector(
+
                       onTap: state.sendOrderLoading
                           ? null
                           : () async {
+
+                        print("=========== CONFIRM CLICKED ===========");
+
+                        print("School ID => ${widget.schoolId}");
+
+                        print("Selected Students => ${widget.studentUuids}");
+
+                        print("Selected List Type => $_selectedListType");
+
+                        print("Selected Process Type => $_selectedProcessType");
+
+                        /// STUDENT CHECK
                         if (widget.studentUuids.isEmpty) {
+
                           ScaffoldMessenger.of(context)
                               .showSnackBar(
                             SnackBar(
                               content: const Text(
                                 'No students selected',
                               ),
+
                               backgroundColor: Colors.red,
+
                               behavior:
                               SnackBarBehavior.floating,
+
                               shape: RoundedRectangleBorder(
                                 borderRadius:
                                 BorderRadius.circular(10),
                               ),
+
                               margin:
                               const EdgeInsets.all(12),
                             ),
                           );
+
                           return;
                         }
+
+                        /// LIST TYPE CHECK
                         if (_selectedListType.isEmpty) {
+
                           ScaffoldMessenger.of(context)
                               .showSnackBar(
                             SnackBar(
                               content: const Text(
                                 'Please select a list type',
                               ),
+
                               backgroundColor: Colors.orange,
+
                               behavior:
                               SnackBarBehavior.floating,
+
                               shape: RoundedRectangleBorder(
                                 borderRadius:
                                 BorderRadius.circular(10),
                               ),
+
                               margin:
                               const EdgeInsets.all(12),
                             ),
                           );
+
                           return;
                         }
+
+                        /// PROCESS TYPE CHECK
                         if (_selectedProcessType.isEmpty) {
+
                           ScaffoldMessenger.of(context)
                               .showSnackBar(
                             SnackBar(
                               content: const Text(
                                 'Please select a process type',
                               ),
+
                               backgroundColor: Colors.orange,
+
                               behavior:
                               SnackBarBehavior.floating,
+
                               shape: RoundedRectangleBorder(
                                 borderRadius:
                                 BorderRadius.circular(10),
                               ),
+
                               margin:
                               const EdgeInsets.all(12),
                             ),
                           );
+
                           return;
                         }
+
+                        /// API CALL
                         await context
                             .read<CorrectionCubit>()
                             .processOrder(
                           schoolId: widget.schoolId,
-                          processType: _selectedProcessType,
-                          listType: _selectedListType,
-                          studentUuids: widget.studentUuids,
+
+                          processType:
+                          _selectedProcessType,
+
+                          listType:
+                          _selectedListType,
+
+                          studentUuids:
+                          widget.studentUuids,
                         );
                       },
+
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 20,
                           vertical: 11,
                         ),
+
                         decoration: BoxDecoration(
                           color: state.sendOrderLoading
                               ? Colors.grey
                               : AppTheme.btnColor,
+
                           borderRadius:
                           BorderRadius.circular(25),
                         ),
+
                         child: state.sendOrderLoading
+
                             ? const SizedBox(
                           width: 18,
                           height: 18,
+
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
                             color: Colors.white,
                           ),
                         )
+
                             : Text(
                           'Confirm',
+
                           style: MyStyles.mediumText(
                             size: 14,
                             color: Colors.white,
