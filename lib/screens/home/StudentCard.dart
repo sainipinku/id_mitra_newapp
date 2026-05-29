@@ -22,6 +22,8 @@ import 'package:idmitra/providers/school/school_cubit.dart';
 import 'package:idmitra/providers/student_form/student_form_cubit.dart';
 import 'package:idmitra/providers/student_form/student_form_data_cubit.dart';
 import 'package:idmitra/screens/add_student/add_student_form.dart';
+import 'package:idmitra/face_capture/models/upload_result.dart';
+import 'package:idmitra/face_capture/screens/camera_screen.dart';
 import 'package:idmitra/utils/common_widgets/app_button.dart';
 import '../../providers/students/students_state.dart';
 
@@ -55,21 +57,17 @@ class _StudentCardState extends State<StudentCard> {
   File? studentProfileImageFile;
   bool isUploading = false;
 
-  /// 📸 Camera — fix rotation then direct upload
+  /// 📸 Camera — direct face capture then upload
   Future<void> _fromCamera() async {
-    final pickedFile = await ImagePicker().pickImage(
-      source: ImageSource.camera,
-      imageQuality: 100,
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const CameraScreen(),
+      ),
     );
 
-    if (pickedFile != null && mounted) {
-      File rotatedImage = await FlutterExifRotation.rotateImage(
-        path: pickedFile.path,
-      );
-
-      if (mounted) {
-        await _uploadImage(rotatedImage.path);
-      }
+    if (result != null && result is ProcessedImage && mounted) {
+      await _uploadImage(result.filePath);
     }
   }
 
@@ -426,7 +424,18 @@ class _StudentCardState extends State<StudentCard> {
             ),
           Expanded(
             child: GestureDetector(
-              onTap: () => _openEditScreen(context),
+              onTap: () {
+                final url = studentDetailsData.profilePhotoUrl?.trim();
+                final hasRealPhoto = url != null &&
+                    url.isNotEmpty &&
+                    !url.contains('ui-avatars.com');
+
+                if (hasRealPhoto) {
+                  _openEditScreen(context);
+                } else {
+                  _fromCamera();
+                }
+              },
               behavior: HitTestBehavior.opaque,
               child: Row(
                 children: [

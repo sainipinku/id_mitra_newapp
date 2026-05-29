@@ -16,6 +16,8 @@ import 'package:idmitra/providers/add_student/add_student_cubit.dart';
 import 'package:idmitra/providers/student_form/student_form_cubit.dart';
 import 'package:idmitra/providers/student_form/student_form_data_cubit.dart';
 import 'package:idmitra/screens/add_student/add_student_form.dart';
+import 'package:idmitra/face_capture/models/upload_result.dart';
+import 'package:idmitra/face_capture/screens/camera_screen.dart';
 import 'package:idmitra/utils/common_widgets/app_button.dart';
 import 'package:idmitra/providers/students/students_cubit.dart';
 import 'package:image_cropper/image_cropper.dart';
@@ -61,9 +63,13 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
   }
 
   Future<void> _fromCamera() async {
-    final pickedFile = await ImagePicker().pickImage(source: ImageSource.camera);
-    if (pickedFile != null) {
-      await _uploadImage(pickedFile.path);
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CameraScreen()),
+    );
+
+    if (result != null && result is ProcessedImage && mounted) {
+      await _uploadImage(result.filePath);
     }
   }
 
@@ -235,16 +241,38 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _showPicker(context);
-                    },
-                    icon: const Icon(Icons.edit),
-                    label: const Text("Edit Profile Image"),
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _fromCamera();
+                        },
+                        icon: const Icon(Icons.camera_alt),
+                        label: const Text("Camera"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.btnColor,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _fromGallery();
+                        },
+                        icon: const Icon(Icons.photo_library),
+                        label: const Text("Gallery"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.btnColor,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

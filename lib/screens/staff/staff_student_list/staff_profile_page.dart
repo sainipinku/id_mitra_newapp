@@ -16,6 +16,8 @@ import 'package:idmitra/providers/staff_detail/staff_detail_cubit.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:idmitra/face_capture/models/upload_result.dart';
+import 'package:idmitra/face_capture/screens/camera_screen.dart';
 
 import 'add_staff_form.dart';
 
@@ -53,8 +55,13 @@ class _StaffProfileBodyState extends State<_StaffProfileBody> {
   String? _uploadedPhotoUrl;
 
   Future<void> _fromCamera() async {
-    final picked = await ImagePicker().pickImage(source: ImageSource.camera);
-    if (picked != null) await _uploadPhoto(picked.path);
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CameraScreen()),
+    );
+    if (result != null && result is ProcessedImage && mounted) {
+      await _uploadPhoto(result.filePath);
+    }
   }
 
   Future<void> _fromGallery() async {

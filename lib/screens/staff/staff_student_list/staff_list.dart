@@ -31,6 +31,8 @@ import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:idmitra/screens/staff/staff_order_page/staff_order_detail_page.dart';
 import 'package:idmitra/utils/common_widgets/app_button.dart';
+import 'package:idmitra/face_capture/models/upload_result.dart';
+import 'package:idmitra/face_capture/screens/camera_screen.dart';
 
 import '../../orders/order_staff_page.dart';
 import 'add_staff_form.dart';
@@ -632,9 +634,13 @@ class _StaffCardState extends State<_StaffCard> {
 
 
   Future<void> _fromCamera() async {
-    final picked =
-    await ImagePicker().pickImage(source: ImageSource.camera);
-    if (picked != null) await _uploadPhoto(picked.path);
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CameraScreen()),
+    );
+    if (result != null && result is ProcessedImage && mounted) {
+      await _uploadPhoto(result.filePath);
+    }
   }
 
   Future<void> _fromGallery() async {
@@ -2105,9 +2111,13 @@ class _StaffCorrectionItemCardState extends State<_StaffCorrectionItemCard> {
       _uploadedPhotoUrl ?? widget.item.effectiveStaff?.profilePhotoUrl;
 
   Future<void> _fromCamera() async {
-    final picked =
-    await ImagePicker().pickImage(source: ImageSource.camera);
-    if (picked != null) await _uploadPhoto(picked.path);
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CameraScreen()),
+    );
+    if (result != null && result is ProcessedImage && mounted) {
+      await _uploadPhoto(result.filePath);
+    }
   }
 
   Future<void> _fromGallery() async {

@@ -20,6 +20,10 @@ void main() async{
 
   MaintenanceService.instance.init(Config.proBaseUrl);
 
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.white,
