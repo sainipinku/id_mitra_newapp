@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:idmitra/api_mamanger/api_manager.dart';
@@ -68,6 +69,13 @@ class SchoolCubit extends Cubit<SchoolState> {
 
   // ─── MAIN FETCH ─
 
+
+
+  Future<bool> hasInternet() async {
+    final result = await Connectivity().checkConnectivity();
+    return result != ConnectivityResult.none;
+  }
+
   Future<void> fetchStudents({
     bool isLoadMore = false,
     String search = '',
@@ -92,22 +100,37 @@ class SchoolCubit extends Cubit<SchoolState> {
       emit(state.copyWith(isPaginationLoading: true));
     }
 
-    // ── Step 1: Load from local DB (only page-1, no search) ─
+    // ── Step 1: Load from local DB (only page-1, no search) ──
     if (isCacheable) {
       final localData = await _loadFromLocal(_cacheKey());
+
       if (localData != null) {
         final parsed = _parseSchoolsFromJson(localData);
+
         if (parsed.isNotEmpty) {
-          final total = localData['data']?['schools']?['total'] ?? parsed.length;
+          final total =
+              localData['data']?['schools']?['total'] ?? parsed.length;
+
           emit(state.copyWith(
             loading: false,
             students: parsed,
             page: 2,
             hasMore: parsed.length < total,
           ));
-          print('SchoolCubit: loaded ${parsed.length} schools from local DB');
 
-          // Step 2: Background sync — silently update cache then refresh UI
+          print(
+            'SchoolCubit: loaded ${parsed.length} schools from local DB',
+          );
+
+          // 🔥 Internet check before background sync
+          final isConnected = await hasInternet();
+
+          if (!isConnected) {
+            print('No internet connection - using local DB only');
+            return;
+          }
+
+          // 🔄 Background API sync
           _syncFromApi(
             page: 1,
             search: search,
@@ -115,11 +138,27 @@ class SchoolCubit extends Cubit<SchoolState> {
             isLoadMore: false,
             emitStates: true,
           );
+
           return;
         }
       }
     }
 
+    // 🔥 Internet check before direct API call
+    final isConnected = await hasInternet();
+
+    if (!isConnected) {
+      emit(state.copyWith(
+        loading: false,
+        isPaginationLoading: false,
+        error: 'No internet connection',
+      ));
+
+      print('No internet connection and no local data found');
+      return;
+    }
+
+    // 🌐 API Call
     await _syncFromApi(
       page: currentPage,
       search: search,
