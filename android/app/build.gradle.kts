@@ -40,7 +40,7 @@ android {
         versionName = flutterVersionName
 
         multiDexEnabled = true
-        
+
         // Fix for isar_flutter_libs package attribute in manifest
         manifestPlaceholders["package"] = "dev.isar.isar_flutter_libs"
     }
