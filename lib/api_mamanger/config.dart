@@ -97,6 +97,8 @@ class Routes {
       "auth/school/$schoolId/students/$studentUuid/move-to-extra";
   static String assignStudent(String schoolId, String studentUuid) =>
       "auth/school/$schoolId/students/$studentUuid/assign";
+  static String getClassStudents(String schoolId, String classId) =>
+      "auth/school/$schoolId/classes/$classId/students";
   static String getHolidays(String schoolId, {int? year, String search = ''}) {
     String url = "auth/school/$schoolId/holidays?per_page=100";
     if (year != null) url += "&year=$year";

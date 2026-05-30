@@ -22,9 +22,9 @@ import 'package:idmitra/providers/school/school_cubit.dart';
 import 'package:idmitra/providers/student_form/student_form_cubit.dart';
 import 'package:idmitra/providers/student_form/student_form_data_cubit.dart';
 import 'package:idmitra/screens/add_student/add_student_form.dart';
-import 'package:idmitra/face_capture/models/upload_result.dart';
 import 'package:idmitra/face_capture/screens/camera_screen.dart';
 import 'package:idmitra/utils/common_widgets/app_button.dart';
+import '../../models/face_capture/upload_result.dart';
 import '../../providers/students/students_state.dart';
 
 class StudentCard extends StatefulWidget {
@@ -35,6 +35,9 @@ class StudentCard extends StatefulWidget {
   final VoidCallback? onEdit;
   final bool isSelected;
   final VoidCallback? onToggle;
+  final bool showPopupMenu;
+  final bool showExtraOption;
+  final bool showActivateOption;
 
   StudentCard({
     super.key,
@@ -45,6 +48,9 @@ class StudentCard extends StatefulWidget {
     this.onEdit,
     this.isSelected = false,
     this.onToggle,
+    this.showPopupMenu = true,
+    this.showExtraOption = true,
+    this.showActivateOption = true,
   });
 
   @override
@@ -57,15 +63,50 @@ class _StudentCardState extends State<StudentCard> {
   File? studentProfileImageFile;
   bool isUploading = false;
 
-  /// 📸 Camera — direct face capture then upload
+  /// 📸 Camera — face capture, background upload, camera screen pe hi raho
   Future<void> _fromCamera() async {
+    final uuid = studentDetailsData.uuid ?? '';
+    final uploadUrl = Config.url(Routes.updateStudentProfile(uuid));
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const CameraScreen(),
+        builder: (_) => CameraScreen(
+          uploadUrl: uploadUrl,
+          onUploaded: (newPhotoUrl) {
+            // Online: CDN URL se student update karo
+            if (!mounted) return;
+            final updated = studentDetailsData.copyWith(
+              profilePhotoUrl: newPhotoUrl,
+              isPhotoPendingSync: false,
+              clearOfflinePhotoPath: true,
+            );
+            context.read<StudentsCubit>().updateStudentInState(updated);
+            setState(() => studentDetailsData = updated);
+          },
+          onOfflineSave: (filePath) async {
+            // Offline: cubit se localDB me save karo (camera screen pe hi raho)
+            if (!mounted) return;
+            await context.read<StudentsCubit>().uploadStudentImage(
+              path: filePath,
+              student: studentDetailsData,
+            );
+            if (!mounted) return;
+            final updated = context
+                .read<StudentsCubit>()
+                .state
+                .studentsList
+                .firstWhere(
+                  (s) => s.uuid == studentDetailsData.uuid,
+                  orElse: () => studentDetailsData,
+                );
+            setState(() => studentDetailsData = updated);
+          },
+        ),
       ),
     );
 
+    // Fallback: agar kisi reason se ProcessedImage mila
     if (result != null && result is ProcessedImage && mounted) {
       await _uploadImage(result.filePath);
     }
@@ -631,20 +672,21 @@ class _StudentCardState extends State<StudentCard> {
                 }
               },
               itemBuilder: (_) => [
-                const PopupMenuItem(
-                  value: 'extra',
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.move_to_inbox,
-                        size: 18,
-                        color: Colors.orange,
-                      ),
-                      SizedBox(width: 8),
-                      Text('Extra'),
-                    ],
+                if (widget.showExtraOption)
+                  const PopupMenuItem(
+                    value: 'extra',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.move_to_inbox,
+                          size: 18,
+                          color: Colors.orange,
+                        ),
+                        SizedBox(width: 8),
+                        Text('Extra'),
+                      ],
+                    ),
                   ),
-                ),
 
                 const PopupMenuItem(
                   value: 'delete',
@@ -661,31 +703,32 @@ class _StudentCardState extends State<StudentCard> {
                   ),
                 ),
 
-                PopupMenuItem(
-                  value: 'toggle',
-                  child: Row(
-                    children: [
-                      Icon(
-                        (studentDetailsData.status ?? 0) == 1
-                            ? Icons.toggle_on
-                            : Icons.toggle_off,
-                        size: 22,
-                        color:
-                        (studentDetailsData.status ?? 0) == 1
-                            ? Colors.green
-                            : Colors.red,
-                      ),
+                if (widget.showActivateOption)
+                  PopupMenuItem(
+                    value: 'toggle',
+                    child: Row(
+                      children: [
+                        Icon(
+                          (studentDetailsData.status ?? 0) == 1
+                              ? Icons.toggle_on
+                              : Icons.toggle_off,
+                          size: 22,
+                          color:
+                          (studentDetailsData.status ?? 0) == 1
+                              ? Colors.green
+                              : Colors.red,
+                        ),
 
-                      const SizedBox(width: 8),
+                        const SizedBox(width: 8),
 
-                      Text(
-                        (studentDetailsData.status ?? 0) == 1
-                            ? 'Deactivate'
-                            : 'Activate',
-                      ),
-                    ],
+                        Text(
+                          (studentDetailsData.status ?? 0) == 1
+                              ? 'Deactivate'
+                              : 'Activate',
+                        ),
+                      ],
+                    ),
                   ),
-                ),
               ],
             ),
                 ],

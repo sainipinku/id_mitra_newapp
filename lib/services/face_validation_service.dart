@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'dart:ui';
 
-import '../face_capture/models/validation_result.dart';
+import '../models/face_capture/validation_result.dart';
 
 
 class FaceValidationService {

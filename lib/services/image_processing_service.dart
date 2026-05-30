@@ -6,17 +6,17 @@ import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import '../face_capture/models/upload_result.dart';
-import '../face_capture/models/validation_result.dart';
+import '../models/face_capture/upload_result.dart';
+import '../models/face_capture/validation_result.dart';
 
 class ImageProcessingService {
 
-  /// Laplacian variance below this = blurry
-  static const double kBlurThreshold = 80.0;
+  /// Laplacian variance below this = blurry (higher = more strict)
+  static const double kBlurThreshold = 120.0;
 
-  /// Pixel luminance 0–255; sweet spot 60–210
-  static const double kMinBrightness = 60.0;
-  static const double kMaxBrightness = 210.0;
+  /// Pixel luminance 0–255; sweet spot 70–200
+  static const double kMinBrightness = 70.0;
+  static const double kMaxBrightness = 200.0;
 
   /// Max dimension after compression
   static const int kMaxDimension = 1080;

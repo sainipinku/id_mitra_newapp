@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:idmitra/Widgets/CommonAppBar.dart';
 import 'package:idmitra/Widgets/shimmer_loader.dart';
 import 'package:idmitra/api_mamanger/UserLocal.dart';
+import 'package:idmitra/api_mamanger/config.dart';
 import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/components/my_font_weight.dart';
 import 'package:idmitra/components/text_filed.dart';
@@ -31,9 +32,9 @@ import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:idmitra/screens/staff/staff_order_page/staff_order_detail_page.dart';
 import 'package:idmitra/utils/common_widgets/app_button.dart';
-import 'package:idmitra/face_capture/models/upload_result.dart';
 import 'package:idmitra/face_capture/screens/camera_screen.dart';
 
+import '../../../models/face_capture/upload_result.dart';
 import '../../orders/order_staff_page.dart';
 import 'add_staff_form.dart';
 import 'assign_classes_sheet.dart';
@@ -634,10 +635,27 @@ class _StaffCardState extends State<_StaffCard> {
 
 
   Future<void> _fromCamera() async {
+    final uploadUrl = Config.url(
+      Routes.uploadStaffPhoto(schoolId, staff.uuid),
+    );
+
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const CameraScreen()),
+      MaterialPageRoute(
+        builder: (_) => CameraScreen(
+          uploadUrl: uploadUrl,
+          imageFieldName: 'photo',
+          onUploaded: (newPhotoUrl) {
+            if (!mounted) return;
+            setState(() => _uploadedPhotoUrl = newPhotoUrl);
+          },
+          onOfflineSave: (filePath) async {
+            await _uploadPhoto(filePath);
+          },
+        ),
+      ),
     );
+
     if (result != null && result is ProcessedImage && mounted) {
       await _uploadPhoto(result.filePath);
     }
@@ -2111,10 +2129,29 @@ class _StaffCorrectionItemCardState extends State<_StaffCorrectionItemCard> {
       _uploadedPhotoUrl ?? widget.item.effectiveStaff?.profilePhotoUrl;
 
   Future<void> _fromCamera() async {
+    final staff = widget.item.effectiveStaff;
+    if (staff == null) return;
+    final uploadUrl = Config.url(
+      Routes.uploadStaffPhoto(widget.schoolId, staff.uuid ?? ''),
+    );
+
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const CameraScreen()),
+      MaterialPageRoute(
+        builder: (_) => CameraScreen(
+          uploadUrl: uploadUrl,
+          imageFieldName: 'photo',
+          onUploaded: (newPhotoUrl) {
+            if (!mounted) return;
+            setState(() => _uploadedPhotoUrl = newPhotoUrl);
+          },
+          onOfflineSave: (filePath) async {
+            await _uploadPhoto(filePath);
+          },
+        ),
+      ),
     );
+
     if (result != null && result is ProcessedImage && mounted) {
       await _uploadPhoto(result.filePath);
     }

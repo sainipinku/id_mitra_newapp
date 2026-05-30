@@ -16,9 +16,9 @@ import 'package:idmitra/providers/staff_detail/staff_detail_cubit.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:idmitra/face_capture/models/upload_result.dart';
 import 'package:idmitra/face_capture/screens/camera_screen.dart';
 
+import '../../../models/face_capture/upload_result.dart';
 import 'add_staff_form.dart';
 
 class StaffProfilePage extends StatelessWidget {
@@ -55,10 +55,27 @@ class _StaffProfileBodyState extends State<_StaffProfileBody> {
   String? _uploadedPhotoUrl;
 
   Future<void> _fromCamera() async {
+    final uploadUrl = Config.url(
+      Routes.uploadStaffPhoto(widget.schoolId, widget.staff.uuid),
+    );
+
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const CameraScreen()),
+      MaterialPageRoute(
+        builder: (_) => CameraScreen(
+          uploadUrl: uploadUrl,
+          imageFieldName: 'photo',
+          onUploaded: (newPhotoUrl) {
+            if (!mounted) return;
+            setState(() => _uploadedPhotoUrl = newPhotoUrl);
+          },
+          onOfflineSave: (filePath) async {
+            await _uploadPhoto(filePath);
+          },
+        ),
+      ),
     );
+
     if (result != null && result is ProcessedImage && mounted) {
       await _uploadPhoto(result.filePath);
     }

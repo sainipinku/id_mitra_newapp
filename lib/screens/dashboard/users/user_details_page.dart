@@ -8,10 +8,11 @@ import 'package:idmitra/components/my_font_weight.dart';
 import 'package:idmitra/config/ScreenSize.dart';
 import 'package:idmitra/models/schools/SchoolListModel.dart';
 import 'package:idmitra/providers/student_form/student_form_cubit.dart';
+import 'package:idmitra/providers/students/students_cubit.dart';
+import 'package:idmitra/providers/class_students/class_students_cubit.dart';
+import 'package:idmitra/screens/class_students/class_students_list_page.dart';
 import 'package:idmitra/screens/edit_profile/student_form.dart';
 import 'package:idmitra/screens/home/student_list.dart';
-import 'package:idmitra/screens/orders/orders_page.dart';
-import 'package:idmitra/screens/staff/staff_student_list/staff_student_list.dart';
 import 'package:idmitra/utils/navigation_utils.dart';
 import '../../../local_db/student_local_ds/student_local_ds.dart';
 import '../../edit_profile/image_setting.dart';
@@ -280,20 +281,23 @@ class _UserDetailsContent extends StatelessWidget {
                       page: StaffListingPage(schoolId: schoolDetailsModel?.id.toString() ?? ''),
                     ),
                   ),
-                  // statCard(
-                  //   title: "TOTAL ORDERS",
-                  //   value: "${schoolDetailsModel?.orderCount ?? 0}",
-                  //   callBtn: () => Navigator.push(
-                  //     context,
-                  //     MaterialPageRoute(
-                  //       builder: (_) => OrdersPage(
-                  //         schoolId: schoolDetailsModel?.id.toString() ?? '',
-                  //         schoolName: schoolDetailsModel?.name ?? '',
-                  //         totalOrderCount: schoolDetailsModel?.orderCount,
-                  //       ),
-                  //     ),
-                  //   ),
-                  // ),
+                  statCard(
+                    title: "Class Student",
+                    value: "${schoolDetailsModel?.studentCount ?? '0'}",
+                    callBtn: () => navigateWithTransition(
+                      context: context,
+                      page: MultiBlocProvider(
+                        providers: [
+                          BlocProvider(create: (_) => ClassStudentsCubit()),
+                          BlocProvider(create: (_) => StudentsCubit()),
+                        ],
+                        child: ClassStudentsListPage(
+                          schoolId: schoolDetailsModel?.id?.toString() ?? '',
+                          schoolDetailsModel: schoolDetailsModel,
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
 

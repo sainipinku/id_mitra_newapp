@@ -16,12 +16,13 @@ import 'package:idmitra/providers/add_student/add_student_cubit.dart';
 import 'package:idmitra/providers/student_form/student_form_cubit.dart';
 import 'package:idmitra/providers/student_form/student_form_data_cubit.dart';
 import 'package:idmitra/screens/add_student/add_student_form.dart';
-import 'package:idmitra/face_capture/models/upload_result.dart';
 import 'package:idmitra/face_capture/screens/camera_screen.dart';
 import 'package:idmitra/utils/common_widgets/app_button.dart';
 import 'package:idmitra/providers/students/students_cubit.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
+
+import '../../models/face_capture/upload_result.dart';
 
 class StudentProfilePage extends StatefulWidget {
   final StudentDetailsData student;
@@ -63,9 +64,43 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
   }
 
   Future<void> _fromCamera() async {
+    final uuid = _student.uuid ?? '';
+    final uploadUrl = Config.url(Routes.updateStudentProfile(uuid));
+
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const CameraScreen()),
+      MaterialPageRoute(
+        builder: (_) => CameraScreen(
+          uploadUrl: uploadUrl,
+          onUploaded: (newPhotoUrl) {
+            if (!mounted) return;
+            final updated = _student.copyWith(
+              profilePhotoUrl: newPhotoUrl,
+              isPhotoPendingSync: false,
+              clearOfflinePhotoPath: true,
+            );
+            context.read<StudentsCubit>().updateStudentInState(updated);
+            setState(() => _student = updated);
+          },
+          onOfflineSave: (filePath) async {
+            if (!mounted) return;
+            await context.read<StudentsCubit>().uploadStudentImage(
+              path: filePath,
+              student: _student,
+            );
+            if (!mounted) return;
+            final updated = context
+                .read<StudentsCubit>()
+                .state
+                .studentsList
+                .firstWhere(
+                  (s) => s.uuid == _student.uuid,
+                  orElse: () => _student,
+                );
+            setState(() => _student = updated);
+          },
+        ),
+      ),
     );
 
     if (result != null && result is ProcessedImage && mounted) {

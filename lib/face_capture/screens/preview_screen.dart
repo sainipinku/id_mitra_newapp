@@ -3,7 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:idmitra/api_mamanger/api_manager.dart';
 import 'package:idmitra/api_mamanger/config.dart';
-import 'package:idmitra/face_capture/models/upload_result.dart';
+
+import '../../models/face_capture/upload_result.dart';
 
 
 class PreviewScreen extends StatefulWidget {
@@ -377,7 +378,7 @@ class _PreviewScreenState extends State<PreviewScreen>
             ),
             const SizedBox(height: 12),
           ],
-          
+
           // Retake button - Dark Grey
           SizedBox(
             width: double.infinity,

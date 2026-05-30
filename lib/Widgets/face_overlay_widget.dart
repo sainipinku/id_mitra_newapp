@@ -1,18 +1,16 @@
   import 'package:flutter/material.dart';
 
-import '../face_capture/models/validation_result.dart';
+import '../models/face_capture/validation_result.dart';
 
 
 class FaceOverlayWidget extends StatelessWidget {
   final ValidationResult result;
   final Size previewSize;
-  final int countdown;
 
   const FaceOverlayWidget({
     super.key,
     required this.result,
     required this.previewSize,
-    this.countdown = 0,
   });
 
   @override
@@ -23,38 +21,6 @@ class FaceOverlayWidget extends StatelessWidget {
           size: Size.infinite,
           painter: _OvalMaskPainter(state: result.state),
         ),
-        
-        if (countdown > 0)
-          Positioned(
-            bottom: 120,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(color: const Color(0xFF00E676), width: 2),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.check_circle, color: Color(0xFF00E676), size: 24),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Capturing in $countdown...',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
 
         Positioned(
           bottom: 40,
@@ -161,15 +127,15 @@ class _StatusBar extends StatelessWidget {
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
-      margin: const EdgeInsets.symmetric(horizontal: 40),
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      margin: const EdgeInsets.symmetric(horizontal: 48),
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(12),
+        color: color.withOpacity(0.88),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
             color: Colors.black26,
-            blurRadius: 8,
+            blurRadius: 6,
             offset: const Offset(0, 2),
           ),
         ],
@@ -178,7 +144,7 @@ class _StatusBar extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _StatusIcon(state: result.state, color: Colors.white),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           Flexible(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -188,8 +154,9 @@ class _StatusBar extends StatelessWidget {
                   title,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.2,
                   ),
                 ),
                 if (subtitle != null) ...[
@@ -197,8 +164,9 @@ class _StatusBar extends StatelessWidget {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
-                      fontSize: 12,
+                      color: Colors.white.withOpacity(0.85),
+                      fontSize: 10,
+                      letterSpacing: 0.1,
                     ),
                   ),
                 ],
@@ -248,6 +216,6 @@ class _StatusIcon extends StatelessWidget {
         break;
     }
 
-    return Icon(icon, color: color, size: 28);
+    return Icon(icon, color: color, size: 18);
   }
 }

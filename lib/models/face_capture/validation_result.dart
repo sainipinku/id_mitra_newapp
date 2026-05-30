@@ -48,7 +48,7 @@ class ValidationResult {
 
     if (!isWellLit) {
       final b = brightnessScore ?? 0;
-      return b < 60 ? 'Too Dark\nMove to brighter area' : 'Too Bright\nAvoid direct sunlight';
+      return b < 70 ? 'Too Dark\nMove to brighter area' : 'Too Bright\nAvoid direct sunlight';
     }
 
     if (!isGoodSize) {
@@ -91,6 +91,39 @@ class ValidationResult {
     if (headAngleZ != null) score -= headAngleZ!.abs() * 0.5;
 
     return score.clamp(0, 100).toInt();
+  }
+
+  /// Live score shown on camera as soon as face is detected (not requiring isReady)
+  int get liveQualityScore {
+    if (!hasFace) return 0;
+
+    double score = 100.0;
+
+    if (!singleFace) score -= 40;
+    if (!isSharp) score -= 22;
+    if (!isWellLit) score -= 18;
+    if (!isGoodSize) score -= 10;
+    if (!isCentered) score -= 8;
+    if (!isFacingStraight) score -= 8;
+
+    if (blurScore != null && blurScore! < 100) {
+      score -= (100 - blurScore!) * 0.12;
+    }
+    if (brightnessScore != null) {
+      if (brightnessScore! < 80) score -= (80 - brightnessScore!) * 0.12;
+      if (brightnessScore! > 200) score -= (brightnessScore! - 200) * 0.12;
+    }
+    if (headAngleY != null) score -= headAngleY!.abs() * 0.2;
+    if (headAngleZ != null) score -= headAngleZ!.abs() * 0.2;
+
+    return score.clamp(0, 100).toInt();
+  }
+
+  Color get liveQualityColor {
+    final s = liveQualityScore;
+    if (s >= 90) return const Color(0xFF00E676);
+    if (s >= 70) return const Color(0xFFFFA000);
+    return const Color(0xFFFF5252);
   }
   String get qualityLabel {
     int score = qualityScore;

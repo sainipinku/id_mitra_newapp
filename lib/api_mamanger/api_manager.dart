@@ -338,16 +338,15 @@ Response: ${response.body}
       return null;
     }
   }
-  multiRequestRoute(image, String url) async {
+  multiRequestRoute(image, String url, {String fieldName = 'image'}) async {
     final request = http.MultipartRequest('POST', Uri.parse(url));
 
     if (image != null) {
       request.files.add(
-        await http.MultipartFile.fromPath('image', image),
+        await http.MultipartFile.fromPath(fieldName, image),
       );
     }
 
-    // request.fields['user_name'] = userName;
     request.fields['image_type'] = 'photo';
 
     final token = await UserSecureStorage.fetchToken();
@@ -359,8 +358,6 @@ Response: ${response.body}
 
       return http.Response.fromStream(response);
     } catch (error) {
-      // Handle errors
-
       return http.Response('Error sending request', 500);
     }
   }
