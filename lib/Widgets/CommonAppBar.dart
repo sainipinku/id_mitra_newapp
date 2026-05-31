@@ -247,12 +247,12 @@ PreferredSizeWidget dashboardAppBar(BuildContext context) {
                             child: svgIcon(icon: 'assets/icons/home/notification.svg', clr: AppTheme.btnColor,),
                           )),
                       onPressed: () {
-                       /* Navigator.push(
+                        Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) => const BackupGlobalDataScreen(),
                           ),
-                       );*/
+                       );
                       },
                     ),
 

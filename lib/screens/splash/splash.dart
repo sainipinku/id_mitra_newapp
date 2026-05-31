@@ -81,7 +81,9 @@ class _SplashState extends State<Splash> with SingleTickerProviderStateMixin {
     }
 
     // Check for app update after navigation
-    UpdateService.instance.checkForUpdate();
+    Future.delayed(Duration(milliseconds: 500), () {
+      UpdateService.instance.checkForUpdate();
+    });
   }
 
   @override
