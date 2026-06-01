@@ -208,19 +208,24 @@ class _CameraScreenState extends State<CameraScreen>
       setState(() {
         _isCapturing = false;
         _isUploading = true;
-        if (widget.bulkStudents != null) {
-          _bulkCapturedImages[_currentBulkIndex] = processed.filePath;
-        }
       });
 
-      // Background upload
+      // Bulk mode: restart camera immediately so live feed shows during upload (no preview)
+      if (widget.bulkStudents != null) {
+        await _controller?.startImageStream(_onCameraFrame);
+      }
+
+      // Upload
       await _doUpload(processed);
 
-      // Bulk handling: move to next student after upload
+      // Bulk: auto-advance to next student after upload, no preview shown
       if (widget.bulkStudents != null && mounted) {
-        if (_currentBulkIndex < widget.bulkStudents!.length - 1) {
-          final nextIndex = _currentBulkIndex + 1;
+        final capturedIndex = _currentBulkIndex;
+        if (capturedIndex < widget.bulkStudents!.length - 1) {
+          final nextIndex = capturedIndex + 1;
+          // Batch: mark done + advance index in one frame so preview never flashes
           setState(() {
+            _bulkCapturedImages[capturedIndex] = processed.filePath;
             _currentBulkIndex = nextIndex;
             _isUploading = false;
           });
@@ -229,17 +234,22 @@ class _CameraScreenState extends State<CameraScreen>
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
           );
-          // Restart stream for next student
-          await _controller?.startImageStream(_onCameraFrame);
         } else {
-          _showSuccessSnack('All students in bulk list processed!');
+          setState(() {
+            _bulkCapturedImages[capturedIndex] = processed.filePath;
+            _isUploading = false;
+          });
+          _showSuccessSnack('All students processed!');
           Navigator.pop(context);
         }
       }
     } catch (e) {
       _showRetrySnack('Something went wrong. Try again.');
       await _controller?.startImageStream(_onCameraFrame);
-      setState(() => _isCapturing = false);
+      setState(() {
+        _isCapturing = false;
+        _isUploading = false;
+      });
     }
   }
 
@@ -266,7 +276,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _doUpload(ProcessedImage processed) async {
-    if (widget.uploadUrl == null) {
+    if (widget.uploadUrl == null && widget.bulkStudents == null) {
       if (mounted) Navigator.pop(context, processed);
       return;
     }
@@ -782,7 +792,6 @@ class _CameraView extends StatelessWidget {
                     ),
                   ),
 
-                // Manual / Auto Capture Toggle (Right Side)
                 if (!isAlreadyCaptured && !isSearchVisible)
                   Positioned(
                     right: 16,
@@ -791,14 +800,14 @@ class _CameraView extends StatelessWidget {
                       children: [
                         _ToggleIconButton(
                           icon: Icons.touch_app_outlined,
-                          label: 'Manual',
+                          label: 'Manual Click',
                           isActive: !isAutoCapture,
                           onTap: isAutoCapture ? onToggleAutoCapture : null,
                         ),
                         const SizedBox(height: 20),
                         _ToggleIconButton(
                           icon: Icons.auto_fix_high_outlined,
-                          label: 'Auto',
+                          label: 'Auto Click',
                           isActive: isAutoCapture,
                           onTap: !isAutoCapture ? onToggleAutoCapture : null,
                         ),
@@ -932,7 +941,6 @@ class _CameraView extends StatelessWidget {
             ),
           ),
 
-          // Bulk Student Details (Integrated Container Below Frame)
           if (bulkStudents != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -1052,73 +1060,78 @@ class _CameraView extends StatelessWidget {
               ),
             ),
 
-          // Bottom row: Gallery | Capture | Search
+          // Bottom row: Gallery
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 40),
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Gallery button (left) — native camera style
+                // Gallery
                 if (!isAlreadyCaptured)
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: GestureDetector(
-                      onTap: hasImages ? onOpenGallery : null,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: hasImages
-                                ? Colors.white.withOpacity(0.8)
-                                : Colors.white.withOpacity(0.25),
-                            width: 2,
-                          ),
-                          color: Colors.white12,
-                        ),
-                        child: hasImages
-                            ? Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: Image.file(
-                                      File(capturedImages.last.filePath),
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                  if (capturedImages.length > 1)
-                                    Positioned(
-                                      bottom: 3,
-                                      right: 3,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 4, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: Colors.black.withOpacity(0.7),
-                                          borderRadius: BorderRadius.circular(5),
-                                        ),
-                                        child: Text(
-                                          '${capturedImages.length}',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
+                    child: bulkStudents != null && hasImages
+                        ? _BulkGalleryStrip(
+                            images: capturedImages,
+                            onOpenGallery: onOpenGallery,
+                          )
+                        : GestureDetector(
+                            onTap: hasImages ? onOpenGallery : null,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: hasImages
+                                      ? Colors.white.withOpacity(0.8)
+                                      : Colors.white.withOpacity(0.25),
+                                  width: 2,
+                                ),
+                                color: Colors.white12,
+                              ),
+                              child: hasImages
+                                  ? Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(10),
+                                          child: Image.file(
+                                            File(capturedImages.last.filePath),
+                                            fit: BoxFit.cover,
                                           ),
                                         ),
-                                      ),
+                                        if (capturedImages.length > 1)
+                                          Positioned(
+                                            bottom: 3,
+                                            right: 3,
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                  horizontal: 4, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black.withOpacity(0.7),
+                                                borderRadius: BorderRadius.circular(5),
+                                              ),
+                                              child: Text(
+                                                '${capturedImages.length}',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    )
+                                  : const Icon(
+                                      Icons.photo_library_outlined,
+                                      color: Colors.white30,
+                                      size: 24,
                                     ),
-                                ],
-                              )
-                            : const Icon(
-                                Icons.photo_library_outlined,
-                                color: Colors.white30,
-                                size: 24,
-                              ),
-                      ),
-                    ),
+                            ),
+                          ),
                   ),
 
                 _CaptureButton(
@@ -1161,6 +1174,79 @@ class _CameraView extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// Horizontal scrollable
+class _BulkGalleryStrip extends StatelessWidget {
+  final List<ProcessedImage> images;
+  final VoidCallback onOpenGallery;
+
+  const _BulkGalleryStrip({required this.images, required this.onOpenGallery});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onOpenGallery,
+      child: SizedBox(
+        height: 56,
+        width: 100,
+        child: Stack(
+          children: [
+            ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: images.length,
+              itemBuilder: (_, i) {
+                final img = images[images.length - 1 - i];
+                return Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.file(
+                      File(img.filePath),
+                      width: 56,
+                      height: 56,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: Colors.white12,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.person_outline,
+                            color: Colors.white30, size: 24),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            // Count badge
+            Positioned(
+              bottom: 3,
+              left: 3,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.75),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '${images.length}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1281,7 +1367,6 @@ class _CaptureButton extends StatelessWidget {
 }
 
 
-// ─── Gallery Screen ─────────────────────────────────────────────────────────
 
 class _GalleryScreen extends StatelessWidget {
   final List<ProcessedImage> images;

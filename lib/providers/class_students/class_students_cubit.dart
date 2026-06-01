@@ -27,7 +27,7 @@ class ClassStudentsCubit extends Cubit<ClassStudentsState> {
     }
   }
 
-  Future<void> fetchClasses(String schoolId) async {
+  Future<void> fetchClasses(String schoolId, {String? initialClassId}) async {
     if (schoolId.isEmpty) {
       emit(state.copyWith(error: "School ID is missing"));
       return;
@@ -66,9 +66,9 @@ class ClassStudentsCubit extends Cubit<ClassStudentsState> {
               classes: classes,
             ));
 
-            // Auto-select first class if none selected
-            if (classes.isNotEmpty && state.selectedClassId == null) {
-              fetchClassStudents(schoolId: schoolId, classId: classes.first.value!);
+            // Auto-select initialClassId if provided, else no auto-select (StudentsCubit handles fetch)
+            if (initialClassId != null && classes.any((c) => c.value == initialClassId)) {
+              emit(state.copyWith(selectedClassId: initialClassId));
             }
             return;
           } else {
@@ -92,8 +92,8 @@ class ClassStudentsCubit extends Cubit<ClassStudentsState> {
                 classes: classes,
               ));
               
-              if (classes.isNotEmpty && state.selectedClassId == null) {
-                fetchClassStudents(schoolId: schoolId, classId: classes.first.value!);
+              if (initialClassId != null && classes.any((c) => c.value == initialClassId)) {
+                emit(state.copyWith(selectedClassId: initialClassId));
               }
               return;
             }
@@ -130,8 +130,8 @@ class ClassStudentsCubit extends Cubit<ClassStudentsState> {
         classes: classes,
       ));
 
-      if (classes.isNotEmpty && state.selectedClassId == null) {
-        fetchClassStudents(schoolId: schoolId, classId: classes.first.value!);
+      if (initialClassId != null && classes.any((c) => c.value == initialClassId)) {
+        emit(state.copyWith(selectedClassId: initialClassId));
       }
     } else {
       emit(state.copyWith(
@@ -288,5 +288,10 @@ class ClassStudentsCubit extends Cubit<ClassStudentsState> {
 
   void selectClass(String schoolId, String classId) {
     fetchClassStudents(schoolId: schoolId, classId: classId);
+  }
+
+  /// Sirf selected class ID update karo — students fetch StudentsCubit karega
+  void setSelectedClass(String? classId) {
+    emit(state.copyWith(selectedClassId: classId, clearSelectedClassId: classId == null));
   }
 }

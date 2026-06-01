@@ -23,6 +23,7 @@ class ClassStudentsState {
     List<StudentDetailsData>? studentsList,
     List<ClassOption>? classes,
     String? selectedClassId,
+    bool clearSelectedClassId = false,
     String? error,
   }) {
     return ClassStudentsState(
@@ -30,7 +31,7 @@ class ClassStudentsState {
       classesLoading: classesLoading ?? this.classesLoading,
       studentsList: studentsList ?? this.studentsList,
       classes: classes ?? this.classes,
-      selectedClassId: selectedClassId ?? this.selectedClassId,
+      selectedClassId: clearSelectedClassId ? null : (selectedClassId ?? this.selectedClassId),
       error: error ?? this.error,
     );
   }
