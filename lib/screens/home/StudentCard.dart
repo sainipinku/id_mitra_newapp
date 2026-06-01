@@ -35,6 +35,7 @@ class StudentCard extends StatefulWidget {
   final VoidCallback? onEdit;
   final bool isSelected;
   final VoidCallback? onToggle;
+  final VoidCallback? onLongPress;
   final bool showPopupMenu;
   final bool showExtraOption;
   final bool showActivateOption;
@@ -48,6 +49,7 @@ class StudentCard extends StatefulWidget {
     this.onEdit,
     this.isSelected = false,
     this.onToggle,
+    this.onLongPress,
     this.showPopupMenu = true,
     this.showExtraOption = true,
     this.showActivateOption = true,
@@ -477,6 +479,7 @@ class _StudentCardState extends State<StudentCard> {
                   _fromCamera();
                 }
               },
+              onLongPress: widget.onLongPress,
               behavior: HitTestBehavior.opaque,
               child: Row(
                 children: [

@@ -310,7 +310,7 @@ class _StaffUserDetailsContentState extends State<_StaffUserDetailsContent> {
                   //   ),
                   // ),
                   statCard(
-                    title: "Class Student",
+                    title: "Class",
                     value: "${schoolDetailsModel?.studentCount ?? '0'}",
                     callBtn: () => navigateWithTransition(
                       context: context,

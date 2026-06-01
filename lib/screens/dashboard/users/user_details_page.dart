@@ -282,7 +282,7 @@ class _UserDetailsContent extends StatelessWidget {
                     ),
                   ),
                   statCard(
-                    title: "Class Student",
+                    title: "Class ",
                     value: "${schoolDetailsModel?.studentCount ?? '0'}",
                     callBtn: () => navigateWithTransition(
                       context: context,

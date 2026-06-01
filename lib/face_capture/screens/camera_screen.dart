@@ -792,7 +792,6 @@ class _CameraView extends StatelessWidget {
                     ),
                   ),
 
-                // Manual / Auto Capture Toggle (Right Side)
                 if (!isAlreadyCaptured && !isSearchVisible)
                   Positioned(
                     right: 16,
@@ -801,14 +800,14 @@ class _CameraView extends StatelessWidget {
                       children: [
                         _ToggleIconButton(
                           icon: Icons.touch_app_outlined,
-                          label: 'Manual',
+                          label: 'Manual Click',
                           isActive: !isAutoCapture,
                           onTap: isAutoCapture ? onToggleAutoCapture : null,
                         ),
                         const SizedBox(height: 20),
                         _ToggleIconButton(
                           icon: Icons.auto_fix_high_outlined,
-                          label: 'Auto',
+                          label: 'Auto Click',
                           isActive: isAutoCapture,
                           onTap: !isAutoCapture ? onToggleAutoCapture : null,
                         ),
@@ -942,7 +941,6 @@ class _CameraView extends StatelessWidget {
             ),
           ),
 
-          // Bulk Student Details (Integrated Container Below Frame)
           if (bulkStudents != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -1062,7 +1060,7 @@ class _CameraView extends StatelessWidget {
               ),
             ),
 
-          // Bottom row: Gallery | Capture | Search
+          // Bottom row: Gallery
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 40),
             child: Stack(
