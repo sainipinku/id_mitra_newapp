@@ -14,6 +14,8 @@ import 'package:idmitra/providers/staff/staff_cubit.dart';
 import 'package:idmitra/utils/navigation_utils.dart';
 import 'package:idmitra/screens/admin/admin_edit_profile/admin_edit_profile.dart';
 
+import '../../../../providers/class_students/class_students_cubit.dart';
+import '../../../class_students/class_students_list_page.dart';
 import '../../../edit_profile/image_setting.dart';
 import '../../../staff/staff_student_list/staff_list.dart';
 
@@ -301,6 +303,23 @@ class _AdminUserDetailsContent extends StatelessWidget {
                       create: (_) => StaffCubit(),
                       child: StaffListingPage(
                           schoolId: schoolDetailsModel?.id.toString() ?? '',
+                        schoolDetailsModel: schoolDetailsModel,
+                      ),
+                    ),
+                  ),
+                ),
+                statCard(
+                  title: "Class Student",
+                  value: "${schoolDetailsModel?.studentCount ?? '0'}",
+                  callBtn: () => navigateWithTransition(
+                    context: context,
+                    page: MultiBlocProvider(
+                      providers: [
+                        BlocProvider(create: (_) => ClassStudentsCubit()),
+                        BlocProvider(create: (_) => StudentsCubit()),
+                      ],
+                      child: ClassStudentsListPage(
+                        schoolId: schoolDetailsModel?.id?.toString() ?? '',
                         schoolDetailsModel: schoolDetailsModel,
                       ),
                     ),
