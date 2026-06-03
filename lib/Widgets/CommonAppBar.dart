@@ -144,19 +144,19 @@ class CommonAppBar extends StatelessWidget
     return Material(
       color: Colors.transparent,
       child: GestureDetector(
-        onTap: () => Navigator.pop(context),
+        onTap: onBackPressed ?? () => Navigator.pop(context),
         child: Ink(
           decoration: BoxDecoration(
             shape: BoxShape.rectangle,
-            border: Border.all(color: AppTheme.titleHintColor),
-            borderRadius: BorderRadius.all(Radius.circular(8),)
+            border: Border.all(color: titleColor == Colors.white ? Colors.white38 : AppTheme.titleHintColor),
+            borderRadius: const BorderRadius.all(Radius.circular(8)),
           ),
-          child: const Padding(
-            padding: EdgeInsets.all(5.0),
+          child: Padding(
+            padding: const EdgeInsets.all(5.0),
             child: Icon(
               Icons.arrow_back_ios_new_rounded,
               size: 18,
-              color: Colors.black87,
+              color: titleColor == Colors.white ? Colors.white : Colors.black87,
             ),
           ),
         ),

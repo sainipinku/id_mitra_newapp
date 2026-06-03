@@ -878,6 +878,7 @@ class CorrectionCubit extends Cubit<CorrectionState> {
   Future<void> fetchCorrectionStudents({
     required String schoolId,
     bool isLoadMore = false,
+    bool silentRefresh = false,
     String search = '',
     String classFilter = '',
     List<String> classIds = const [],
@@ -895,10 +896,13 @@ class CorrectionCubit extends Cubit<CorrectionState> {
 
     if (!isLoadMore) {
       emit(state.copyWith(
-        studentsLoading: true,
+        // silentRefresh ho toh loading true mat karo — list wahi rahegi
+        studentsLoading: silentRefresh ? false : true,
         studentsPage: 1,
         studentsHasMore: true,
         clearStudentsError: true,
+        // refresh pe students clear mat karo — list wahi rahegi
+        students: silentRefresh ? state.students : [],
         selectedClassIds: classIds.isNotEmpty
             ? classIds
             : (classFilter.isNotEmpty

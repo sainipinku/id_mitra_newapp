@@ -3,7 +3,6 @@ import 'package:idmitra/db_helper.dart';
 import 'package:idmitra/models/global_summary/global_summary_model.dart';
 
 class GlobalSummaryLocalDS {
-  // ─── Save full summary ────────────────────────────────────────────────────
 
   Future<void> saveSummary(GlobalSummaryModel model) async {
     final db = await DBHelper.db;
@@ -125,7 +124,6 @@ class GlobalSummaryLocalDS {
     });
   }
 
-  // ─── Load cached summary ──────────────────────────────────────────────────
 
   Future<GlobalSummaryLocalData?> loadCachedSummary() async {
     final db = await DBHelper.db;
@@ -172,7 +170,7 @@ class GlobalSummaryLocalDS {
   }
 }
 
-/// Lightweight container for locally cached summary data
+// Lightweight container for locally cached summary data
 class GlobalSummaryLocalData {
   final DateTime syncedAt;
   final List<SummarySchool> schools;

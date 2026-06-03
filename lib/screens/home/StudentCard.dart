@@ -473,8 +473,19 @@ class _StudentCardState extends State<StudentCard> {
                     url.isNotEmpty &&
                     !url.contains('ui-avatars.com');
 
+                final hasOfflinePhoto =
+                    studentDetailsData.isPhotoPendingSync &&
+                    studentDetailsData.offlinePhotoPath != null &&
+                    studentDetailsData.offlinePhotoPath!.isNotEmpty;
+
                 if (hasRealPhoto) {
                   _openEditScreen(context);
+                } else if (hasOfflinePhoto) {
+                  _showImagePreview(
+                    context,
+                    studentDetailsData.offlinePhotoPath!,
+                    resolvedShape: resolvedShape,
+                  );
                 } else {
                   _fromCamera();
                 }
@@ -495,10 +506,21 @@ class _StudentCardState extends State<StudentCard> {
                         url.isNotEmpty &&
                         !url.contains('ui-avatars.com');
 
+                    final hasOfflinePhoto =
+                        studentDetailsData.isPhotoPendingSync &&
+                        studentDetailsData.offlinePhotoPath != null &&
+                        studentDetailsData.offlinePhotoPath!.isNotEmpty;
+
                     if (hasRealPhoto) {
                       _showImagePreview(
                         context,
                         url,
+                        resolvedShape: resolvedShape,
+                      );
+                    } else if (hasOfflinePhoto) {
+                      _showImagePreview(
+                        context,
+                        studentDetailsData.offlinePhotoPath!,
                         resolvedShape: resolvedShape,
                       );
                     } else {
@@ -521,10 +543,21 @@ class _StudentCardState extends State<StudentCard> {
                           url.isNotEmpty &&
                           !url.contains('ui-avatars.com');
 
+                      final hasOfflinePhoto =
+                          studentDetailsData.isPhotoPendingSync &&
+                          studentDetailsData.offlinePhotoPath != null &&
+                          studentDetailsData.offlinePhotoPath!.isNotEmpty;
+
                       if (hasRealPhoto) {
                         _showImagePreview(
                           context,
                           url,
+                          resolvedShape: resolvedShape,
+                        );
+                      } else if (hasOfflinePhoto) {
+                        _showImagePreview(
+                          context,
+                          studentDetailsData.offlinePhotoPath!,
                           resolvedShape: resolvedShape,
                         );
                       } else {
@@ -596,7 +629,15 @@ class _StudentCardState extends State<StudentCard> {
                       color: AppTheme.graySubTitleColor,
                     ),
                   ),
+                  const SizedBox(height: 3),
 
+                  Text(
+                    "Father name : ${studentDetailsData.srNo ?? 'N/A'}",
+                    style: MyStyles.regularText(
+                      size: 12,
+                      color: AppTheme.graySubTitleColor,
+                    ),
+                  ),
                   const SizedBox(height: 3),
 
                   studentDetailsData.missingFields!.isNotEmpty

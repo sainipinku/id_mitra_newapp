@@ -397,7 +397,6 @@ class _BackupGlobalDataScreenState extends State<BackupGlobalDataScreen> {
     );
   }
 
-  // ─── Sync section widgets ─────────────────────────────────────────────────
 
   Widget _buildDotsRow() {
     const int totalDots = 14;

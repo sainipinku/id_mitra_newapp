@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../Widgets/CommonAppBar.dart';
 import '../../Widgets/face_overlay_widget.dart';
 import '../../api_mamanger/api_manager.dart';
 import '../../components/app_theme.dart';
@@ -351,7 +352,7 @@ class _CameraScreenState extends State<CameraScreen>
         _isUploading = false;
       });
 
-      // Student list ko immediately update karo (camera screen pe hi rahe)
+      // Student list ko immediately update karo
       if (newPhotoUrl != null && newPhotoUrl.isNotEmpty) {
         widget.onUploaded?.call(newPhotoUrl);
       }
@@ -421,6 +422,7 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   Widget build(BuildContext context) {
+    final bool isAlreadyCaptured = _bulkCapturedImages.containsKey(_currentBulkIndex);
     return PopScope(
       canPop: !_isSearchVisible,
       onPopInvokedWithResult: (didPop, result) {
@@ -436,9 +438,28 @@ class _CameraScreenState extends State<CameraScreen>
       child: Scaffold(
         resizeToAvoidBottomInset: false,
         backgroundColor: Colors.black,
-        body: SafeArea(
-          child: _buildBody(),
+        appBar: CommonAppBar(
+          title: isAlreadyCaptured ? 'Photo Preview' : 'Take Photo',
+          backgroundColor: Colors.black,
+          titleColor: Colors.white,
+          onBackPressed: _isSearchVisible
+              ? () => setState(() {
+                    _isSearchVisible = false;
+                    _searchCtrl.clear();
+                    FocusScope.of(context).unfocus();
+                  })
+              : null,
+          actions: isAlreadyCaptured
+              ? [const SizedBox(width: 48)]
+              : [
+                  IconButton(
+                    icon: const Icon(Icons.flip_camera_ios_outlined,
+                        color: Colors.white),
+                    onPressed: _toggleCamera,
+                  ),
+                ],
         ),
+        body: _buildBody(),
       ),
     );
   }
@@ -655,42 +676,7 @@ class _CameraView extends StatelessWidget {
       removeBottom: true,
       child: Column(
         children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
-                  onPressed: isSearchVisible
-                      ? onToggleSearch
-                      : () => Navigator.of(context).maybePop(),
-                ),
-                Expanded(
-                  child: Text(
-                    isAlreadyCaptured ? 'Photo Preview' : 'Take Photo',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                if (!isAlreadyCaptured)
-                  IconButton(
-                    icon: const Icon(
-                      Icons.flip_camera_ios_outlined,
-                      color: Colors.white,
-                    ),
-                    onPressed: onToggleCamera,
-                  )
-                else
-                  const SizedBox(width: 48),
-              ],
-            ),
-          ),
-
+          const SizedBox(height: 12),
           Expanded(
             child: Stack(
               fit: StackFit.expand,
@@ -717,7 +703,6 @@ class _CameraView extends StatelessWidget {
                     ),
                   ),
                 ),
-
                 if (!isAlreadyCaptured)
                   FaceOverlayWidget(
                     result: liveResult,
@@ -816,7 +801,7 @@ class _CameraView extends StatelessWidget {
                   ),
 
                 Positioned(
-                  top: 8,
+                  top: 3,
                   left: 16,
                   right: 16,
                   child: Column(
@@ -943,9 +928,9 @@ class _CameraView extends StatelessWidget {
 
           if (bulkStudents != null)
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(16),
@@ -985,23 +970,23 @@ class _CameraView extends StatelessWidget {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 4),
                           Text(
                             bulkStudents![currentBulkIndex].name ?? 'Unknown',
                             style: const TextStyle(
                                 color: Colors.white,
-                                fontSize: 18,
+                                fontSize: 12,
                                 fontWeight: FontWeight.bold,
                                 letterSpacing: 0.3),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 2),
                           Text(
                             "${bulkStudents![currentBulkIndex].datumClass?.nameWithprefix ?? ''} - ${bulkStudents![currentBulkIndex].section?.name ?? ''}",
                             style: TextStyle(
                                 color: Colors.white.withOpacity(0.6),
-                                fontSize: 13,
+                                fontSize: 10,
                                 fontWeight: FontWeight.w500),
                           ),
                         ],
@@ -1011,17 +996,17 @@ class _CameraView extends StatelessWidget {
                     // Image Preview (Integrated)
                     if (hasAnyPhoto)
                       Container(
-                        width: 64,
-                        height: 64,
+                        width: 38,
+                        height: 38,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                               color: isSessionCaptured
                                   ? Colors.green
                                   : (hasOfflinePhoto
                                       ? Colors.blue
                                       : (hasServerPhoto
-                                          ? AppTheme.btnColor // Use theme color instead of orange
+                                          ? AppTheme.btnColor
                                           : Colors.white24)),
                               width: 2),
                           boxShadow: [
