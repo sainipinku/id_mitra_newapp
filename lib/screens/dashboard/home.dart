@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:idmitra/Widgets/shimmer_loader.dart';
-import 'package:idmitra/Widgets/svg_file.dart';
-import 'package:idmitra/components/app_theme.dart';
 import 'package:idmitra/providers/home/home_cubit.dart';
-import 'package:idmitra/screens/SelectRolePage/SelectRolePage.dart';
 import 'package:idmitra/screens/dashboard/StatCard.dart';
 import 'package:idmitra/screens/dashboard/dashboard.dart';
 import 'package:idmitra/utils/MyStyles.dart';
