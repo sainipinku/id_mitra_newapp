@@ -904,6 +904,7 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
     _searchCtrl.clear();
     context.read<CorrectionCubit>().fetchCorrectionStudents(
       schoolId: widget.schoolId,
+      silentRefresh: true,
     );
   }
 
@@ -1264,6 +1265,7 @@ class _CorrectionListTabState extends State<_CorrectionListTab> {
                                     .selectedStudentIds
                                     .contains(item.id);
                                 return _CorrectionCard(
+                                  key: ValueKey(item.id),
                                   item: item,
                                   isSelected: isSelected,
                                   imageShape: imageShape,
@@ -1446,6 +1448,7 @@ class _CorrectionCard extends StatefulWidget {
   final String? imageShape;
 
   const _CorrectionCard({
+    super.key,
     required this.item,
     required this.isSelected,
     required this.onToggle,
@@ -3443,7 +3446,7 @@ class _DownloadChecklistDialogState
                               strokeWidth: 2,
                               color: Colors.white),
                         )
-                            : Text('Confirm',
+                            : Text('Print',
                             style: MyStyles.mediumText(
                                 size: 14, color: Colors.white)),
                       ),

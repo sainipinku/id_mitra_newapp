@@ -2072,7 +2072,7 @@ class __StaffDownloadChecklistDialogState
                           const Icon(Icons.print_rounded,
                               size: 14, color: Colors.white),
                           const SizedBox(width: 6),
-                          Text('Print Now',
+                          Text('Print',
                               style: MyStyles.mediumText(
                                   size: 14, color: Colors.white)),
                         ],

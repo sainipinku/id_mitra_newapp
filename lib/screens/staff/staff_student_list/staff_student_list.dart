@@ -2602,7 +2602,7 @@ class _DownloadChecklistDialogState
                               strokeWidth: 2,
                               color: Colors.white),
                         )
-                            : Text('Print Now',
+                            : Text('Print',
                             style: MyStyles.mediumText(
                                 size: 14, color: Colors.white)),
                       ),

@@ -49,12 +49,12 @@ class GlobalDataCubit extends Cubit<GlobalSummaryState> {
     return super.close();
   }
 
-  // ─── 429-aware GET ────────────────────────────────────────────────────────
+  // ─── 429-aware GET
 
   Future<Map<String, dynamic>?> _getJson(String url) async {
     var response = await _api.getRequest(url);
     if (response != null && response.statusCode == 429) {
-      print('[GlobalSync] ⚠ 429 rate limit hit — waiting 5s before retry. URL: $url');
+      print('[GlobalSync]  429 rate limit hit — waiting 5s before retry. URL: $url');
       _updateProgress(state.progress, ' Rate limited — waiting 5s...');
       await Future.delayed(const Duration(seconds: 5));
       response = await _api.getRequest(url);
@@ -67,7 +67,7 @@ class GlobalDataCubit extends Cubit<GlobalSummaryState> {
     }
   }
 
-  // ─── Main sync ────────────────────────────────────────────────────────────
+  // ─── Main sync
 
   Future<void> syncAll() async {
     if (state.isSyncing) return;
@@ -123,7 +123,6 @@ class GlobalDataCubit extends Cubit<GlobalSummaryState> {
     }
   }
 
-  // ─── Summary ─────────────────────────────────────────────────────────────
 
   Future<Map<String, int>> _syncSummary() async {
     _updateProgress(0.03, 'Fetching summary...');
